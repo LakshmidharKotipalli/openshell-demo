@@ -1,0 +1,14 @@
+Network Rules:  (version 1, 1 chunk)
+
+  Chunk: dda6f082-6be4-485e-ac59-f4ecac48f48b
+  Status: pending
+  Rule: allow_en_wikipedia_org_443
+  Binary: /usr/local/bin/python3.12
+  Confidence: 65%
+  Rationale: Allow python3.12 to connect to en.wikipedia.org:443 (HTTPS).
+  Prover: prover: no new findings
+  Candidate: d9cd58491b93
+  Endpoints: en.wikipedia.org:443 [L4]
+  Binaries: /usr/local/bin/python3.12
+  Hits: 2 (first seen 2026-11-09 17:11:08, last seen 2026-11-09 17:11:31)
+

@@ -1,0 +1,68 @@
+{
+  "next_page_token": "",
+  "sandboxes": [
+    {
+      "annotations": {
+        "internal.openshell.ai/auth-epoch": "1",
+        "internal.openshell.ai/gateway-token-id": "7e0ebd90-3d36-4710-9c92-13ed9a0b9951",
+        "internal.openshell.ai/isolation-backend": "openshell-sandbox",
+        "internal.openshell.ai/runtime-generation": "de590670-cd12-4908-8fd3-e6abc20a262d"
+      },
+      "conditions": [
+        {
+          "last_transition_time": "",
+          "message": "Supervisor session connected",
+          "reason": "DependenciesReady",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "last_transition_time": "",
+          "message": "",
+          "reason": "ConfigurationAccepted",
+          "status": "True",
+          "type": "ConfigurationReady"
+        }
+      ],
+      "configuration_admission": {
+        "config_revision": 2344780536652362344,
+        "error": "",
+        "policy_hash": "2da1d3d974a59c5bb7eb7503f6943a4f78736716f37778ce93c9c2a05e4bb55b",
+        "policy_version": 2,
+        "provider_env_revision": 3176606324465211593,
+        "state": "accepted"
+      },
+      "created_at": "2026-11-09 17:10:40",
+      "created_from_workload_template": null,
+      "current_policy_version": 2,
+      "endpoint_statuses": [],
+      "exit_code": null,
+      "host_key_fingerprint": "SHA256:r63XCp/0XJEQow4i/zkcVcJ6Jfaeezoqz70X+ToG/m8",
+      "id": "a0e6147b-592a-42e4-bdc0-63d93f7ce895",
+      "labels": {
+        "app": "osc-demo"
+      },
+      "last_token_grant_failure": null,
+      "name": "osc-probe",
+      "phase": "Ready",
+      "provisioning": {
+        "admission_start_time": "2026-11-09T17:10:40.843Z",
+        "attempt_id": "82e790ba-7d09-4aa7-809c-7ede4c00579a",
+        "cleanup_completed_time": null,
+        "cleanup_error": "",
+        "cleanup_retry_time": null,
+        "configuration_change_id": "951c08a42956a98346ce53ada7d5335397792b1190b062c262e20e4a9859cde7",
+        "configuration_change_time": "2026-11-09T17:10:40.155Z",
+        "deadline": null,
+        "driver_operation_id": "126ed03f-2606-48a2-bada-b5887aedfbda",
+        "driver_operation_pending": false,
+        "first_rejection_time": null,
+        "phase": "ready",
+        "preparation_deadline": "2026-11-09T17:40:40.155Z",
+        "timeout_time": null
+      },
+      "resource_version": 18,
+      "workspace": "default"
+    }
+  ]
+}

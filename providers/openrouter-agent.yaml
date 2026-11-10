@@ -1,0 +1,35 @@
+# Provider profile for the demo agent (OpenShell v0.1.7 schema).
+# `inference.local` / `openshell inference` were removed in 0.1.0; instead the sandbox gets an
+# opaque placeholder for OPENROUTER_API_KEY and the proxy swaps in the real key ONLY for
+# requests to openrouter.ai made by the listed binary.
+#
+#   openshell profile lint   -f providers/openrouter-agent.yaml
+#   openshell profile import -f providers/openrouter-agent.yaml
+#   openshell provider create --name openrouter-agent --type openrouter-agent --from-existing
+id: openrouter-agent
+display_name: OpenRouter (demo agent)
+description: OpenRouter chat completions for the Sandboxed Agent Console agent
+category: inference
+inference_capable: true
+
+credentials:
+  - name: api_key
+    description: OpenRouter API key
+    env_vars: [OPENROUTER_API_KEY]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+
+discovery:
+  credentials: [api_key]
+
+endpoints:
+  - host: openrouter.ai
+    port: 443
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+
+# Real path of the interpreter in python:3.12-slim (verified with readlink -f inside a sandbox).
+binaries:
+  - /usr/local/bin/python3.12

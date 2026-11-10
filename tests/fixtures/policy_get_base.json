@@ -1,0 +1,52 @@
+{
+  "active_version": 2,
+  "config_revision": 2344780536652362344,
+  "hash": "2da1d3d974a59c5bb7eb7503f6943a4f78736716f37778ce93c9c2a05e4bb55b",
+  "policy": {
+    "filesystem_policy": {
+      "include_workdir": true,
+      "read_only": [
+        "/usr",
+        "/lib",
+        "/etc",
+        "/app",
+        "/var/log"
+      ],
+      "read_write": [
+        "/tmp"
+      ]
+    },
+    "landlock": {
+      "compatibility": "best_effort"
+    },
+    "network_policies": {
+      "probe_httpbin": {
+        "binaries": [
+          {
+            "path": "/usr/local/bin/python3.12"
+          }
+        ],
+        "endpoints": [
+          {
+            "access": "read-only",
+            "enforcement": "enforce",
+            "host": "example.com",
+            "port": 443,
+            "protocol": "rest"
+          }
+        ],
+        "name": "probe_httpbin"
+      }
+    },
+    "process": {
+      "run_as_group": "1000",
+      "run_as_user": "1000"
+    },
+    "version": 1
+  },
+  "policy_source": "sandbox",
+  "sandbox": "osc-probe",
+  "scope": "sandbox",
+  "status": "effective",
+  "version": 2
+}

@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandboxed Agent Console — how it works</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --ink:#14202e; --muted:#5d6b7c; --line:#dde4ec;
+    --green:#5b9a00; --green-l:#eaf5d6; --green-d:#3f6e00;
+    --blue:#2563eb; --blue-l:#e6eefc;
+    --red:#d1362f; --red-l:#fdebea;
+    --amber:#b7791f; --amber-l:#fdf3dc;
+    --violet:#6d4fd3; --violet-l:#eeeafb;
+    --code:#0f1720; --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+  a{color:var(--blue)}
+  code{font:0.86em var(--mono);background:#eef2f6;padding:.1em .38em;border-radius:5px}
+  pre{background:var(--code);color:#e6edf3;border-radius:10px;padding:14px 16px;overflow:auto;font:13px/1.55 var(--mono);margin:12px 0;position:relative}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+  .copy{position:absolute;top:8px;right:8px;background:#263445;color:#c9d6e3;border:0;border-radius:6px;padding:3px 9px;font:12px var(--mono);cursor:pointer}
+  .copy:hover{background:#34475c}
+  .k{color:#7ee787}.s{color:#a5d6ff}.c{color:#8b98a9}.r{color:#ff9b93}.y{color:#f2cc60}.b{color:#79c0ff}
+
+  /* layout */
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header.hero{background:linear-gradient(135deg,#0e1a26 0%,#17304a 60%,#25460f 120%);color:#fff;padding:56px 0 44px}
+  .hero h1{font-size:40px;line-height:1.15;margin:0 0 10px;letter-spacing:-.02em}
+  .hero p{max-width:760px;color:#c9d6e3;font-size:18px;margin:0}
+  .hero .tag{display:inline-block;background:rgba(118,185,0,.18);border:1px solid rgba(118,185,0,.5);color:#b7f07a;padding:3px 12px;border-radius:999px;font-size:13px;margin-bottom:16px}
+  .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:30px}
+  .fact{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px}
+  .fact b{display:block;font-size:24px;color:#b7f07a}
+  .fact span{font-size:12.5px;color:#c9d6e3}
+  nav.toc{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav.toc .wrap{display:flex;gap:4px;overflow:auto;padding-top:8px;padding-bottom:8px}
+  nav.toc a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13.5px;padding:5px 11px;border-radius:999px}
+  nav.toc a:hover,nav.toc a.on{background:var(--green-l);color:var(--green-d)}
+  section{padding:46px 0 6px}
+  section h2{font-size:28px;letter-spacing:-.01em;margin:0 0 6px}
+  section h2 .n{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--green);color:#fff;font-size:17px;margin-right:10px;vertical-align:2px}
+  .lead{color:var(--muted);margin:0 0 20px;max-width:820px}
+  h3{font-size:18px;margin:26px 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px rgba(20,32,46,.04)}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .card h4{margin:0 0 6px;font-size:15.5px}
+  .card p{margin:6px 0;font-size:14.5px;color:#33424f}
+  .badge{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;letter-spacing:.02em}
+  .b-green{background:var(--green-l);color:var(--green-d)} .b-blue{background:var(--blue-l);color:var(--blue)}
+  .b-red{background:var(--red-l);color:var(--red)} .b-amber{background:var(--amber-l);color:var(--amber)} .b-violet{background:var(--violet-l);color:var(--violet)}
+  .callout{border-left:4px solid var(--green);background:var(--green-l);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14.5px}
+  .callout.warn{border-color:var(--amber);background:var(--amber-l)}
+  .callout.info{border-color:var(--blue);background:var(--blue-l)}
+  .callout.bad{border-color:var(--red);background:var(--red-l)}
+  .callout b:first-child{display:block;margin-bottom:2px}
+  figure{margin:16px 0;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;overflow:auto}
+  figure svg{display:block;width:100%;height:auto;min-width:760px}
+  figcaption{font-size:13px;color:var(--muted);padding:8px 8px 2px}
+  table{width:100%;border-collapse:collapse;font-size:14px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:s;display:grid;grid-template-columns:36px 1fr;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .steps li:last-child{border-bottom:0}
+  .steps li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--green-l);color:var(--green-d);font-weight:700;font-size:14px}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px}
+  .flow .box{flex:1 1 220px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 14px}
+  .flow .arrow{align-self:center;font-size:22px;color:var(--muted)}
+  .box h5{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .box pre{margin:0;font-size:12px}
+  .tree{font:13px/1.65 var(--mono);background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;overflow:auto;white-space:pre}
+  .tree .d{color:var(--muted)}
+  .pill{display:inline-block;padding:1px 9px;border-radius:999px;background:#eef2f6;font-size:12.5px;margin:2px 3px 2px 0}
+  .tick{color:var(--green);font-weight:700} .cross{color:var(--red);font-weight:700}
+  footer{padding:40px 0 60px;color:var(--muted);font-size:13.5px}
+  @media (max-width:700px){.hero h1{font-size:30px}}
+  @media print{nav.toc{display:none}.copy{display:none}section{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="tag">Built on NVIDIA OpenShell v0.1.7 · Docker driver · macOS (Apple Silicon)</span>
+    <h1>Sandboxed Agent Console</h1>
+    <p>A small web app where an AI agent runs <b>inside a kernel-isolated sandbox</b>. You watch it work, see policy denials in real time, click one button to approve a new network rule, and the rule goes live in the running sandbox. This report explains how every part works, how to run it, and how to reuse the pattern for other applications.</p>
+    <div class="facts">
+      <div class="fact"><b>~2,400</b><span>lines of code &amp; config</span></div>
+      <div class="fact"><b>26</b><span>pytest tests (real captured output)</span></div>
+      <div class="fact"><b>1</b><span>WebSocket carries everything</span></div>
+      <div class="fact"><b>3–10 s</b><span>to apply a policy live</span></div>
+      <div class="fact"><b>0</b><span>real API keys inside the sandbox</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#idea">The idea</a><a href="#arch">Architecture</a><a href="#story">One task, step by step</a>
+  <a href="#isolation">Isolation &amp; secrets</a><a href="#policy">Policies</a><a href="#denial">Denial → rule</a>
+  <a href="#protocol">WebSocket protocol</a><a href="#files">Code map</a><a href="#run">How to run</a>
+  <a href="#reliability">Reliability</a><a href="#reuse">Reuse it</a><a href="#facts">Facts &amp; limits</a>
+</div></nav>
+
+<main class="wrap">
+
+<!-- ======================= 1 ======================= -->
+<section id="idea">
+  <h2><span class="n">1</span>The idea in one minute</h2>
+  <p class="lead">Agents are useful because they can read files, call APIs and use credentials. That is also what makes them risky. OpenShell lets you run an agent with <b>default-deny</b> access and open up exactly what it needs, while it runs.</p>
+  <div class="grid g3">
+    <div class="card"><span class="badge b-blue">Problem</span><h4>Agents need access, but not all of it</h4><p>A research agent needs one website and one model API. It should not see your files, your keys, or the rest of your network.</p></div>
+    <div class="card"><span class="badge b-green">OpenShell</span><h4>Enforcement outside the agent</h4><p>The kernel (Landlock, seccomp) and a network proxy enforce a YAML policy. The agent cannot talk its way past it, because the checks live outside its process.</p></div>
+    <div class="card"><span class="badge b-violet">This app</span><h4>A human-in-the-loop console</h4><p>When the sandbox blocks a request, the app shows who tried to reach what, and one click writes a <i>minimal</i> rule and applies it live. Then the agent retries.</p></div>
+  </div>
+  <div class="callout info"><b>The demo story</b>Run a task under the <b>Strict</b> policy → the agent tries to read Wikipedia → <span class="badge b-red">DENIED</span> → click <b>Allow this host</b> → "policy live in N s" → <b>Retry</b> → the agent fetches the page, asks the model to summarise it, writes <code>summary.md</code> → result appears.</div>
+</section>
+
+<!-- ======================= 2 ======================= -->
+<section id="arch">
+  <h2><span class="n">2</span>Architecture: who talks to whom</h2>
+  <p class="lead">Four layers. The browser talks to a small FastAPI app. The app never touches OpenShell directly; it goes through one adapter that runs the <code>openshell</code> CLI. The CLI talks to the gateway (control plane), which starts and governs sandboxes (data plane).</p>
+
+<figure>
+<svg viewBox="0 0 1120 590" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Inter,sans-serif">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5b9a00"/></marker>
+    <marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4b5a6b"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#d1362f"/></marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b7791f"/></marker>
+  </defs>
+
+  <!-- zones -->
+  <rect x="16" y="40" width="176" height="510" rx="14" fill="#f4f7fb" stroke="#cfd8e3"/>
+  <text x="30" y="64" font-size="12" font-weight="700" fill="#5d6b7c" letter-spacing="1.2">BROWSER</text>
+  <rect x="236" y="40" width="236" height="510" rx="14" fill="#f4f7fb" stroke="#cfd8e3"/>
+  <text x="250" y="64" font-size="12" font-weight="700" fill="#5d6b7c" letter-spacing="1.2">CONSOLE APP · PYTHON</text>
+  <rect x="520" y="40" width="440" height="510" rx="14" fill="#f4f7fb" stroke="#cfd8e3"/>
+  <text x="534" y="64" font-size="12" font-weight="700" fill="#5d6b7c" letter-spacing="1.2">OPENSHELL · HOMEBREW SERVICE + DOCKER</text>
+  <rect x="990" y="40" width="114" height="510" rx="14" fill="#f4f7fb" stroke="#cfd8e3"/>
+  <text x="1004" y="64" font-size="12" font-weight="700" fill="#5d6b7c" letter-spacing="1.2">INTERNET</text>
+
+  <!-- browser -->
+  <g font-size="13" fill="#14202e">
+    <rect x="32" y="84" width="144" height="54" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="104" y="107" text-anchor="middle" font-weight="600">Task + Run</text><text x="104" y="125" text-anchor="middle" font-size="11" fill="#5d6b7c">textarea · URL</text>
+    <rect x="32" y="152" width="144" height="54" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="104" y="175" text-anchor="middle" font-weight="600">Live timeline</text><text x="104" y="193" text-anchor="middle" font-size="11" fill="#5d6b7c">events as they happen</text>
+    <rect x="32" y="220" width="144" height="54" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="104" y="243" text-anchor="middle" font-weight="600">Policy panel</text><text x="104" y="261" text-anchor="middle" font-size="11" fill="#5d6b7c">YAML · Strict / Research</text>
+    <rect x="32" y="288" width="144" height="54" rx="9" fill="#fdebea" stroke="#f1b5b1"/><text x="104" y="311" text-anchor="middle" font-weight="600">Allow this host</text><text x="104" y="329" text-anchor="middle" font-size="11" fill="#5d6b7c">on every denial card</text>
+    <rect x="32" y="356" width="144" height="54" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="104" y="379" text-anchor="middle" font-weight="600">Result panel</text><text x="104" y="397" text-anchor="middle" font-size="11" fill="#5d6b7c">summary.md</text>
+    <text x="104" y="440" text-anchor="middle" font-size="11" fill="#5d6b7c">static HTML · CSS · JS</text>
+    <text x="104" y="456" text-anchor="middle" font-size="11" fill="#5d6b7c">no build step</text>
+  </g>
+
+  <!-- app -->
+  <g font-size="13" fill="#14202e">
+    <rect x="252" y="84" width="204" height="58" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="354" y="108" text-anchor="middle" font-weight="600">FastAPI · /ws</text><text x="354" y="127" text-anchor="middle" font-size="11" fill="#5d6b7c">typed messages (pydantic)</text>
+    <rect x="252" y="160" width="204" height="58" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="354" y="184" text-anchor="middle" font-weight="600">session.py</text><text x="354" y="203" text-anchor="middle" font-size="11" fill="#5d6b7c">event log · orchestration · replay</text>
+    <rect x="252" y="236" width="204" height="62" rx="9" fill="#e6eefc" stroke="#aac3f5"/><text x="354" y="261" text-anchor="middle" font-weight="600">openshell_client.py</text><text x="354" y="280" text-anchor="middle" font-size="11" fill="#33424f">the ONLY code that runs the CLI</text>
+    <rect x="252" y="314" width="204" height="52" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="354" y="337" text-anchor="middle" font-weight="600">openshell CLI v0.1.7</text><text x="354" y="354" text-anchor="middle" font-size="11" fill="#5d6b7c">subprocess · timeouts · scrubbing</text>
+    <rect x="252" y="396" width="204" height="58" rx="9" fill="#fff" stroke="#cfd8e3" stroke-dasharray="5 4"/><text x="354" y="420" text-anchor="middle" font-weight="600">parsing.py</text><text x="354" y="438" text-anchor="middle" font-size="11" fill="#5d6b7c">pure: log → denial · rule merge</text>
+    <text x="354" y="480" text-anchor="middle" font-size="11" fill="#5d6b7c">in-memory state · no database</text>
+  </g>
+
+  <!-- openshell -->
+  <rect x="540" y="84" width="400" height="110" rx="12" fill="#eaf5d6" stroke="#b9dc7d"/>
+  <text x="556" y="110" font-size="14" font-weight="700" fill="#3f6e00">Gateway — control plane</text>
+  <g font-size="12.5" fill="#26340f">
+    <text x="556" y="134">• sandbox lifecycle (create, exec)</text>
+    <text x="556" y="154">• policy revisions + live reload</text>
+    <text x="556" y="174">• providers: the REAL API key</text>
+    <text x="796" y="134">• mTLS API :17670</text>
+    <text x="796" y="154">• sandbox log buffer</text>
+    <text x="796" y="174">• Docker driver</text>
+  </g>
+  <rect x="540" y="226" width="400" height="302" rx="12" fill="#fff" stroke="#9fb0c3" stroke-dasharray="6 4"/>
+  <text x="552" y="514" font-size="11.5" fill="#5d6b7c">Docker Desktop Linux VM · kernel 7.0.14 (Landlock ABI ≥ 3 ✓)</text>
+  <rect x="556" y="244" width="368" height="252" rx="12" fill="#f4f7fb" stroke="#4b5a6b" stroke-width="1.6"/>
+  <text x="568" y="266" font-size="12.5" font-weight="700" fill="#14202e">Sandbox container · python:3.12-slim — data plane</text>
+  <g font-size="13" fill="#14202e">
+    <rect x="572" y="284" width="150" height="82" rx="9" fill="#fff" stroke="#cfd8e3"/><text x="647" y="310" text-anchor="middle" font-weight="600">agent.py</text><text x="647" y="328" text-anchor="middle" font-size="11" fill="#5d6b7c">uid 1000 · stdlib only</text><text x="647" y="346" text-anchor="middle" font-size="11" fill="#5d6b7c">fetch_url · read/write_file</text>
+    <rect x="758" y="284" width="150" height="82" rx="9" fill="#eaf5d6" stroke="#b9dc7d"/><text x="833" y="310" text-anchor="middle" font-weight="600">Supervisor proxy</text><text x="833" y="328" text-anchor="middle" font-size="11" fill="#33424f">policy check (OPA)</text><text x="833" y="346" text-anchor="middle" font-size="11" fill="#33424f">TLS inspect · key swap</text>
+  </g>
+  <rect x="572" y="384" width="336" height="96" rx="9" fill="#fff" stroke="#cfd8e3"/>
+  <g font-size="11.5" fill="#33424f">
+    <text x="584" y="404"><tspan font-weight="700">Landlock</tspan>: rw /sandbox, /tmp · ro system paths</text>
+    <text x="584" y="424"><tspan font-weight="700">seccomp</tspan> syscall filter · non-root user</text>
+    <text x="584" y="444"><tspan font-weight="700">network</tspan>: no direct route — only via the proxy</text>
+    <text x="584" y="464"><tspan font-weight="700">env</tspan>: OPENROUTER_API_KEY = placeholder token</text>
+  </g>
+
+  <!-- internet -->
+  <g font-size="12" fill="#14202e">
+    <rect x="1002" y="284" width="92" height="42" rx="8" fill="#eaf5d6" stroke="#b9dc7d"/><text x="1048" y="302" text-anchor="middle" font-weight="600">openrouter.ai</text><text x="1048" y="317" text-anchor="middle" font-size="10.5" fill="#3f6e00">always allowed</text>
+    <rect x="1002" y="344" width="92" height="42" rx="8" fill="#fdf3dc" stroke="#e8c97e"/><text x="1048" y="362" text-anchor="middle" font-weight="600">wikipedia</text><text x="1048" y="377" text-anchor="middle" font-size="10.5" fill="#b7791f">after “Allow”</text>
+    <rect x="1002" y="404" width="92" height="42" rx="8" fill="#fdebea" stroke="#f1b5b1" stroke-dasharray="4 3"/><text x="1048" y="422" text-anchor="middle" font-weight="600">anything else</text><text x="1048" y="437" text-anchor="middle" font-size="10.5" fill="#d1362f">denied</text>
+  </g>
+
+  <!-- arrows -->
+  <g fill="none" stroke-width="1.8">
+    <path d="M192 113 H252" stroke="#5b9a00" marker-start="url(#ag)" marker-end="url(#ag)"/>
+    <path d="M354 142 V160" stroke="#4b5a6b" marker-end="url(#ak)"/>
+    <path d="M354 218 V236" stroke="#4b5a6b" marker-end="url(#ak)"/>
+    <path d="M354 298 V314" stroke="#4b5a6b" marker-end="url(#ak)"/>
+    <path d="M456 340 H498 V139 H540" stroke="#4b5a6b" marker-end="url(#ak)" marker-start="url(#ak)"/>
+    <path d="M740 194 V244" stroke="#4b5a6b" marker-end="url(#ak)"/>
+    <path d="M722 325 H758" stroke="#4b5a6b" marker-end="url(#ak)"/>
+    <path d="M908 325 H950 V305 H1002" stroke="#5b9a00" marker-end="url(#ag)"/>
+    <path d="M950 325 V365 H1002" stroke="#b7791f" marker-end="url(#aa)"/>
+    <path d="M950 365 V425 H1002" stroke="#d1362f" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+    <path d="M354 396 V366" stroke="#9fb0c3" stroke-dasharray="3 3"/>
+  </g>
+  <g font-size="10.5" fill="#33424f">
+    <text x="222" y="104" text-anchor="middle">WebSocket</text>
+    <text transform="translate(490,330) rotate(-90)" text-anchor="start" font-size="10.5">gRPC + mTLS</text>
+    <text x="752" y="206">Docker driver starts the sandbox</text>
+    <text x="752" y="219">and pushes policy + credentials</text>
+  </g>
+  <text x="24" y="578" font-size="12" fill="#5d6b7c">Green = allowed · Amber = allowed after you click “Allow this host” · Red = blocked by policy · Dashed box = helper used by session.py</text>
+</svg>
+<figcaption>Control plane (gateway) decides and stores; data plane (sandbox) obeys and enforces. The agent can only reach the network through the supervisor proxy.</figcaption>
+</figure>
+
+  <div class="grid g3">
+    <div class="card"><h4>Why a CLI adapter, not the SDK?</h4><p>OpenShell has a Python SDK, but it is workspace-scoped gRPC with no “policy set and wait” or “follow logs” helper. The CLI has all of it and is exactly what an operator sees. Everything funnels through <code>openshell_client.py</code>, so swapping to the SDK later touches one file.</p></div>
+    <div class="card"><h4>Why one WebSocket?</h4><p>The UI needs live events <i>and</i> commands (run, retry, allow, apply). One typed socket does both, and the server keeps an event log with sequence numbers, so a page reload or reconnect resumes the timeline.</p></div>
+    <div class="card"><h4>Why in-memory state?</h4><p>It is a demo console: one session, one sandbox. State is a list of events plus a few fields. No database, no auth. Restarting the app starts clean (and deletes leftover sandboxes).</p></div>
+  </div>
+</section>
+
+<!-- ======================= 3 ======================= -->
+<section id="story">
+  <h2><span class="n">3</span>One task, step by step</h2>
+  <p class="lead">What really happens between clicking <b>Run</b> and seeing the summary, including the denial and the live policy change. The diagram shows every message; the six stages below explain them in words.</p>
+
+<figure>
+<svg viewBox="0 0 1060 770" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Inter,sans-serif">
+  <defs>
+    <marker id="s1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4b5a6b"/></marker>
+    <marker id="s2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d1362f"/></marker>
+    <marker id="s3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5b9a00"/></marker>
+    <marker id="s4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker>
+  </defs>
+  <!-- lane headers -->
+  <g font-size="13" font-weight="700" fill="#14202e" text-anchor="middle">
+    <rect x="50" y="10" width="120" height="34" rx="8" fill="#f0f4f8" stroke="#cfd8e3"/><text x="110" y="32">Browser</text>
+    <rect x="270" y="10" width="120" height="34" rx="8" fill="#e6eefc" stroke="#aac3f5"/><text x="330" y="32">Console app</text>
+    <rect x="490" y="10" width="120" height="34" rx="8" fill="#eaf5d6" stroke="#b9dc7d"/><text x="550" y="32">Gateway</text>
+    <rect x="700" y="10" width="140" height="34" rx="8" fill="#f0f4f8" stroke="#4b5a6b"/><text x="770" y="32">Sandbox (agent)</text>
+    <rect x="910" y="10" width="100" height="34" rx="8" fill="#fdf3dc" stroke="#e8c97e"/><text x="960" y="32">Internet</text>
+  </g>
+  <g stroke="#cfd8e3" stroke-dasharray="4 5"><line x1="110" y1="44" x2="110" y2="756"/><line x1="330" y1="44" x2="330" y2="756"/><line x1="550" y1="44" x2="550" y2="756"/><line x1="770" y1="44" x2="770" y2="756"/><line x1="960" y1="44" x2="960" y2="756"/></g>
+
+  <g font-size="11.5" fill="#14202e" text-anchor="middle">
+    <!-- 1 -->
+    <path d="M110 84 H326" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#s4)"/><text x="220" y="78"><tspan font-weight="700">1</tspan>  run_task  (WebSocket)</text>
+    <!-- 2 -->
+    <path d="M330 120 H546" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="440" y="114"><tspan font-weight="700">2</tspan>  sandbox create --policy strict --provider</text>
+    <!-- 3 -->
+    <path d="M550 156 H766" stroke="#4b5a6b" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#s1)"/><text x="660" y="150"><tspan font-weight="700">3</tspan>  start container, load policy (~1 s)</text>
+    <!-- 4 -->
+    <path d="M330 192 H766" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="548" y="186"><tspan font-weight="700">4</tspan>  upload agent.py · exec python agent.py   (relayed via gateway)</text>
+    <!-- 5 -->
+    <path d="M770 228 H956" stroke="#d1362f" stroke-width="1.8" fill="none" marker-end="url(#s2)"/><text x="860" y="222"><tspan font-weight="700">5</tspan>  fetch wikipedia</text>
+    <g stroke="#d1362f" stroke-width="3"><path d="M846 234 l12 12 M858 234 l-12 12"/></g><text x="925" y="250" fill="#d1362f" font-size="11">blocked by proxy</text>
+    <!-- 6 -->
+    <path d="M770 280 H554" stroke="#d1362f" stroke-width="1.8" fill="none" marker-end="url(#s2)"/><text x="660" y="274"><tspan font-weight="700">6</tspan>  log: NET:OPEN … DENIED</text>
+    <!-- 7 -->
+    <path d="M330 316 H546" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="440" y="310"><tspan font-weight="700">7</tspan>  openshell logs → parse → Denial</text>
+    <!-- 8 -->
+    <path d="M330 352 H114" stroke="#d1362f" stroke-width="1.8" fill="none" marker-end="url(#s2)"/><text x="220" y="346"><tspan font-weight="700">8</tspan>  event: denial → red card</text>
+    <!-- 9 -->
+    <path d="M110 388 H326" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#s4)"/><text x="220" y="382"><tspan font-weight="700">9</tspan>  allow_host  (you click)</text>
+    <!-- 10 -->
+    <path d="M330 424 H546" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="440" y="418"><tspan font-weight="700">10</tspan>  policy get --base · merge · policy set --wait</text>
+    <!-- 11 -->
+    <path d="M550 460 H766" stroke="#5b9a00" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#s3)"/><text x="660" y="454"><tspan font-weight="700">11</tspan>  new revision loaded (3–10 s), live</text>
+    <!-- 12 -->
+    <path d="M110 496 H326" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#s4)"/><text x="220" y="490"><tspan font-weight="700">12</tspan>  retry</text>
+    <!-- 13 -->
+    <path d="M330 532 H766" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="548" y="526"><tspan font-weight="700">13</tspan>  exec python agent.py again</text>
+    <!-- 14 -->
+    <path d="M770 568 H956" stroke="#5b9a00" stroke-width="1.8" fill="none" marker-end="url(#s3)"/><text x="862" y="562"><tspan font-weight="700">14</tspan>  wikipedia ✓</text>
+    <path d="M770 604 H956" stroke="#5b9a00" stroke-width="1.8" fill="none" marker-end="url(#s3)"/><text x="862" y="598"><tspan font-weight="700">15</tspan>  model call ✓ (proxy swaps key)</text>
+    <!-- 16 -->
+    <path d="M770 646 H334" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/><text x="552" y="640"><tspan font-weight="700">16</tspan>  stdout JSON lines · summary.md</text>
+    <!-- 17 -->
+    <path d="M330 692 H114" stroke="#5b9a00" stroke-width="1.8" fill="none" marker-end="url(#s3)"/><text x="220" y="686"><tspan font-weight="700">17</tspan>  events + result → panel</text>
+  </g>
+</svg>
+<figcaption>Blue = browser commands · Gray = CLI calls · Red = the denial path · Green = allowed / success.</figcaption>
+</figure>
+
+  <h3>The same story in words</h3>
+  <ol class="steps">
+    <li><div><b>Run.</b> The browser sends <code>run_task</code>. <code>session.py</code> checks that the provider exists, then creates a sandbox named <code>osc-demo-xxxxxx</code> from <code>python:3.12-slim</code> with <code>policies/strict.yaml</code> and the <code>openrouter-agent</code> provider attached. With the image cached this takes about a second.</div></li>
+    <li><div><b>Upload and exec.</b> <code>agent.py</code> is uploaded into the sandbox's workspace (<code>/sandbox</code>). Each task or retry is an <code>openshell sandbox exec</code> that streams the agent's stdout back line by line. The agent prints one JSON object per step: <code>agent_start</code>, <code>llm_request</code>, <code>tool_call</code>, <code>tool_result</code>, <code>policy_denied</code>, <code>final</code>.</div></li>
+    <li><div><b>The agent is blocked.</b> Its first tool call, <code>fetch_url</code>, tries to connect to Wikipedia. Under the strict policy only the model route is open, so the supervisor proxy refuses the connection. The agent sees a permission error, reports <code>policy_denied</code> and stops cleanly (exit code 3).</div></li>
+    <li><div><b>The denial becomes structured data.</b> Meanwhile the app polls <code>openshell logs</code>, finds the line <code>NET:OPEN … DENIED /usr/local/bin/python3.12 → en.wikipedia.org:443</code>, and parses out host, port and binary (section 6). The UI shows a red card with an <b>Allow this host</b> button.</div></li>
+    <li><div><b>You approve.</b> The app fetches the sandbox's base policy, adds one rule (<b>one endpoint, one binary, read-only</b>), writes it to a temp file and runs <code>openshell policy set --wait</code>. It measures the time and shows it. Network rules reload live; nothing restarts.</div></li>
+    <li><div><b>Retry.</b> <code>exec</code> runs the agent again. Now Wikipedia is allowed, the agent fetches it, calls the model through OpenRouter (the proxy swaps the placeholder for the real key), writes <code>summary.md</code>, and the app reads the file back into the Result panel.</div></li>
+  </ol>
+</section>
+
+<!-- ======================= 4 ======================= -->
+<section id="isolation">
+  <h2><span class="n">4</span>What isolates the agent, and how secrets stay secret</h2>
+  <p class="lead">Four independent layers. Each one was checked on this machine.</p>
+  <div class="grid g4">
+    <div class="card"><span class="badge b-green">Filesystem</span><h4>Landlock</h4><p>A Linux security module. Only <code>/sandbox</code> and <code>/tmp</code> are writable; system paths are read-only.</p><p><span class="tick">✓ proven:</span> writing to <code>/etc</code> and <code>/usr</code> fails with <code>PermissionError</code>.</p></div>
+    <div class="card"><span class="badge b-green">Syscalls</span><h4>seccomp + non-root</h4><p>The workload runs as uid 1000 with a syscall filter. OpenShell actively probes these kernel features before it admits the workload, and fails closed if they are missing.</p><p><span class="tick">✓</span> sandbox admitted on kernel 7.0.14-linuxkit.</p></div>
+    <div class="card"><span class="badge b-green">Network</span><h4>No direct route</h4><p>The workload has no network of its own. Every connection goes through the supervisor proxy, which checks <i>(binary, host, port)</i> and, for HTTP, method and path.</p><p><span class="tick">✓ proven:</span> unlisted hosts fail; denial is logged.</p></div>
+    <div class="card"><span class="badge b-green">Credentials</span><h4>Providers</h4><p>The real key lives in the gateway. The sandbox only holds a placeholder that the proxy swaps in for one binary and one host.</p><p><span class="tick">✓ proven:</span> sandbox env shows <code>openshell:resolve:env:…</code>.</p></div>
+  </div>
+
+  <h3>The API key never enters the sandbox</h3>
+<figure>
+<svg viewBox="0 0 1040 290" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Inter,sans-serif">
+  <defs>
+    <marker id="k1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4b5a6b"/></marker>
+    <marker id="k2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5b9a00"/></marker>
+  </defs>
+  <rect x="20" y="30" width="300" height="150" rx="12" fill="#f4f7fb" stroke="#4b5a6b"/>
+  <text x="36" y="54" font-size="13" font-weight="700" fill="#14202e">Inside the sandbox: agent.py</text>
+  <text x="36" y="80" font-size="12" fill="#33424f">The agent only knows:</text>
+  <rect x="36" y="90" width="268" height="52" rx="8" fill="#14202e"/>
+  <text x="48" y="112" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#7ee787">Authorization: Bearer</text>
+  <text x="48" y="130" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#f2cc60">openshell:resolve:env:v9…</text>
+  <text x="36" y="166" font-size="11.5" fill="#d1362f">a prompt-injected agent can leak nothing useful</text>
+
+  <rect x="370" y="30" width="300" height="150" rx="12" fill="#eaf5d6" stroke="#b9dc7d"/>
+  <text x="386" y="54" font-size="13" font-weight="700" fill="#3f6e00">Supervisor proxy (outside the agent)</text>
+  <g font-size="12" fill="#26340f">
+    <text x="386" y="82">1. caller binary = /usr/local/bin/python3.12 ?</text>
+    <text x="386" y="102">2. host:port = openrouter.ai:443 ?</text>
+    <text x="386" y="122">3. placeholder in the Authorization slot ?</text>
+    <text x="386" y="146" font-weight="700">all three yes → swap in the real key</text>
+    <text x="386" y="166" fill="#b7791f">any no → request denied, key not used</text>
+  </g>
+
+  <rect x="720" y="30" width="300" height="150" rx="12" fill="#fdf3dc" stroke="#e8c97e"/>
+  <text x="736" y="54" font-size="13" font-weight="700" fill="#8a5a0a">What OpenRouter receives</text>
+  <rect x="736" y="90" width="268" height="52" rx="8" fill="#14202e"/>
+  <text x="748" y="112" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#7ee787">Authorization: Bearer</text>
+  <text x="748" y="130" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#f2cc60">sk-or-v1-… (the real key)</text>
+
+  <path d="M320 105 H370" stroke="#4b5a6b" stroke-width="2" fill="none" marker-end="url(#k1)"/>
+  <path d="M670 105 H720" stroke="#5b9a00" stroke-width="2" fill="none" marker-end="url(#k2)"/>
+
+  <rect x="370" y="214" width="300" height="56" rx="12" fill="#e6eefc" stroke="#aac3f5"/>
+  <text x="520" y="238" text-anchor="middle" font-size="13" font-weight="700" fill="#1e4fb8">Gateway provider “openrouter-agent”</text>
+  <text x="520" y="256" text-anchor="middle" font-size="11.5" fill="#33424f">created once by make setup (--from-existing)</text>
+  <path d="M520 214 V182" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#k1)"/>
+  <rect x="20" y="214" width="300" height="56" rx="12" fill="#fff" stroke="#cfd8e3"/>
+  <text x="170" y="238" text-anchor="middle" font-size="13" font-weight="700" fill="#14202e">Your .env (host only, git-ignored)</text>
+  <text x="170" y="256" text-anchor="middle" font-size="11.5" fill="#5d6b7c">read once by setup.sh, never by the app</text>
+  <path d="M320 242 H370" stroke="#4b5a6b" stroke-width="2" fill="none" marker-end="url(#k1)"/>
+</svg>
+<figcaption>The provider profile (<code>providers/openrouter-agent.yaml</code>) is what authorises that one route. Without it the agent could not even reach the model.</figcaption>
+</figure>
+  <div class="callout warn"><b>One difference from the original brief</b>The brief asked the agent to call <code>inference.local</code>. OpenShell <b>removed</b> that endpoint (and <code>openshell inference</code>) in release 0.1.0. The documented replacement, used here, is to attach a provider and call the provider's real endpoint with the placeholder key. The security property is the same; only the URL differs.</div>
+</section>
+
+<!-- ======================= 5 ======================= -->
+<section id="policy">
+  <h2><span class="n">5</span>Policies: what can change live, what cannot</h2>
+  <p class="lead">A policy is a YAML file. Some parts are fixed when the sandbox starts; others can be swapped while it runs. The app is built around that split.</p>
+
+  <div class="grid g2">
+    <div>
+<pre><code><span class="c"># policies/strict.yaml (shortened)</span>
+<span class="k">version</span>: 1
+<span class="c"># ── fixed when the sandbox starts ──</span>
+<span class="k">filesystem_policy</span>:
+  <span class="k">read_only</span>:  [/usr, /lib, /etc, /proc, …]
+  <span class="k">read_write</span>: [<span class="y">/sandbox</span>, <span class="y">/tmp</span>, /dev/null]
+<span class="k">landlock</span>: { compatibility: best_effort }
+<span class="k">process</span>:  { run_as_user: <span class="s">"1000"</span> }
+<span class="c"># ── reloadable while running ──</span>
+<span class="k">network_policies</span>: {}   <span class="c"># none of its own</span></code></pre>
+    </div>
+    <div>
+<pre><code><span class="c"># after “Allow this host” (merged into the base policy)</span>
+<span class="k">network_policies</span>:
+  <span class="y">allow_en_wikipedia_org</span>:
+    <span class="k">endpoints</span>:
+      - host: en.wikipedia.org
+        port: 443
+        protocol: rest        <span class="c"># inspect HTTP</span>
+        access: read-only     <span class="c"># GET/HEAD/OPTIONS</span>
+        enforcement: enforce  <span class="c"># block it</span>
+    <span class="k">binaries</span>:
+      - path: <span class="y">/usr/local/bin/python3.12</span></code></pre>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>Section</th><th>Changes while running?</th><th>Consequence in this app</th></tr>
+    <tr><td><code>network_policies</code></td><td><span class="badge b-green">Live</span></td><td>Presets and “Allow this host” only touch this section. Takes 3–10 s to load.</td></tr>
+    <tr><td><code>filesystem_policy</code>, <code>landlock</code>, <code>process</code></td><td><span class="badge b-amber">Startup only</span></td><td>Strict and Research share these blocks verbatim. Changing them means deleting and recreating the sandbox.</td></tr>
+    <tr><td>Provider-added rules</td><td><span class="badge b-blue">From the provider</span></td><td>The openrouter.ai rule comes from the attached provider, not from the policy file.</td></tr>
+  </table>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h4>Strict</h4><p>No network rules of its own. The agent can reach only the model. Any page it tries to read is denied.</p></div>
+    <div class="card"><h4>Research</h4><p>Adds one rule: <code>python3.12</code> may GET from <code>en.wikipedia.org</code>, <code>docs.python.org</code>, <code>example.com</code>.</p></div>
+    <div class="card"><h4>Apply edited YAML</h4><p>Edit the policy in the panel and apply it. The gateway validates it; unknown fields are rejected and the error is shown in the UI.</p></div>
+  </div>
+  <div class="callout"><b>Why presets merge instead of replacing the whole file</b><code>openshell policy set</code> replaces the entire policy, and OpenShell rejects removing filesystem paths on a running sandbox. So the app fetches the current base policy, swaps <i>only</i> <code>network_policies</code>, and submits that. This is also why a hand-written “Research” file could never be applied naively.</div>
+</section>
+
+<!-- ======================= 6 ======================= -->
+<section id="denial">
+  <h2><span class="n">6</span>From a denial to a rule</h2>
+  <p class="lead">The whole “Allow this host” feature is three small, pure functions in <code>app/parsing.py</code>. They are unit-tested against output captured from the real gateway.</p>
+  <div class="flow">
+    <div class="box"><h5>1 · Raw log line (real)</h5>
+<pre><code>[1794244291.887] [sandbox] [OCSF ] [ocsf]
+NET:OPEN [MED] <span class="r">DENIED</span>
+<span class="y">/usr/local/bin/python3.12</span>(0) ->
+<span class="b">en.wikipedia.org:443</span>
+[reason:transparent_tcp_policy_denied]</code></pre></div>
+    <div class="arrow">→</div>
+    <div class="box"><h5>2 · parse_denials()</h5>
+<pre><code>Denial(
+  host=<span class="b">"en.wikipedia.org"</span>,
+  port=443,
+  binary=<span class="y">"/usr/local/bin/python3.12"</span>,
+  scope="network",
+  reason="transparent_tcp_…")</code></pre></div>
+    <div class="arrow">→</div>
+    <div class="box"><h5>3 · build_allow_rule() + merge_rule()</h5>
+<pre><code>allow_en_wikipedia_org:
+  endpoints: [wikipedia:443,
+    rest, read-only, enforce]
+  binaries: [python3.12]
+→ <span class="k">policy set --wait</span></code></pre></div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>Minimal by construction</h4><p>One host, one port, one binary, read-only, enforced. “Allow” never widens to wildcards or to other programs.</p></div>
+    <div class="card"><h4>Guarded</h4><p>The server refuses to allow a host that was not actually denied in this session, so the button cannot be abused as a generic “open anything” call.</p></div>
+    <div class="card"><h4>De-duplicated</h4><p>The same binary hitting the same host:port is one denial, even though the log shows several related lines.</p></div>
+  </div>
+  <div class="callout info"><b>Two things worth knowing</b>• A sandbox with <i>zero</i> network rules has no proxy at all: connections just fail and <b>no denial is logged</b>. Strict relies on the provider's openrouter.ai rule so a proxy exists.<br>• Landlock (file) denials do not appear in the gateway log stream. The agent catches them and reports <code>agent.fs_denied</code> itself.<br>• OpenShell can also draft allow rules on its own (<code>openshell rule get &lt;sandbox&gt; --status pending</code>). This app uses explicit <code>policy set</code> because that is what was asked for and it shows the apply time.</div>
+</section>
+
+<!-- ======================= 7 ======================= -->
+<section id="protocol">
+  <h2><span class="n">7</span>The WebSocket protocol</h2>
+  <p class="lead">Everything interactive uses <code>ws://127.0.0.1:8000/ws</code>. Messages are JSON with a <code>type</code> field, validated by pydantic on the way in (<code>app/protocol.py</code>).</p>
+  <div class="grid g2">
+    <table>
+      <tr><th colspan="2">Browser → server</th></tr>
+      <tr><td><code>hello</code></td><td>Resume: send <code>last_seq</code> and get missed events</td></tr>
+      <tr><td><code>run_task</code></td><td><code>task</code>, <code>url</code> — creates the sandbox if needed, runs the agent</td></tr>
+      <tr><td><code>retry</code></td><td>Run the same task again (after Allow)</td></tr>
+      <tr><td><code>allow_host</code></td><td><code>host</code>, <code>port</code>, <code>binary</code></td></tr>
+      <tr><td><code>apply_preset</code></td><td><code>strict</code> or <code>research</code></td></tr>
+      <tr><td><code>apply_policy</code></td><td>Edited YAML text</td></tr>
+      <tr><td><code>get_policy</code> · <code>list_sandboxes</code> · <code>delete_sandbox</code></td><td>Housekeeping</td></tr>
+    </table>
+    <table>
+      <tr><th colspan="2">Server → browser</th></tr>
+      <tr><td><code>event</code></td><td>Timeline item with <code>seq</code>, <code>kind</code>, <code>ts</code></td></tr>
+      <tr><td><code>state</code></td><td>status, sandbox, preset, mode (live/replay), can_retry</td></tr>
+      <tr><td><code>policy</code></td><td>YAML + revision + “applied in N s”</td></tr>
+      <tr><td><code>result</code></td><td>Contents of the file the agent wrote</td></tr>
+      <tr><td><code>reset</code></td><td>New session — clear the timeline</td></tr>
+      <tr><td><code>ack</code> · <code>error</code></td><td>Reply to a command, with its <code>id</code></td></tr>
+    </table>
+  </div>
+  <p style="margin-top:14px"><b>Timeline event kinds:</b>
+    <span class="pill">sandbox_creating</span><span class="pill">sandbox_ready</span><span class="pill">run_started</span><span class="pill">agent.agent_start</span><span class="pill">agent.llm_request</span><span class="pill">agent.llm_retry</span><span class="pill">agent.llm_response</span><span class="pill">agent.tool_call</span><span class="pill">agent.tool_result</span><span class="pill">agent.policy_denied</span><span class="pill">agent.fs_denied</span><span class="pill">agent.final</span><span class="pill">denial</span><span class="pill">blocked</span><span class="pill">policy_applying</span><span class="pill">policy_applied</span><span class="pill">done</span><span class="pill">error</span>
+  </p>
+</section>
+
+<!-- ======================= 8 ======================= -->
+<section id="files">
+  <h2><span class="n">8</span>Code map</h2>
+  <p class="lead">Where to look for each idea. The whole project is small enough to read in an afternoon.</p>
+<div class="tree"><span class="d">OpenShell-Demo/</span>
+├─ <b>app/</b>
+│  ├─ main.py              <span class="d">FastAPI app, /ws endpoint, /api/health, shutdown cleanup</span>
+│  ├─ session.py           <span class="d">the brain: sandbox lifecycle, run/retry, denial watcher, policy apply, replay</span>
+│  ├─ openshell_client.py  <span class="d">ONLY place that runs `openshell`: timeouts, streaming exec, secret scrubbing</span>
+│  ├─ parsing.py           <span class="d">pure functions: log → Denial, build/merge rules, lint policy</span>
+│  ├─ protocol.py          <span class="d">typed client→server messages</span>
+│  └─ static/              <span class="d">index.html · style.css · app.js  (no build step)</span>
+├─ <b>agent/agent.py</b>          <span class="d">the in-sandbox agent: 3 tools, JSON-lines output, stdlib only</span>
+├─ <b>policies/</b>               <span class="d">strict.yaml · research.yaml</span>
+├─ <b>providers/</b>              <span class="d">openrouter-agent.yaml — which binary may reach which API with which key</span>
+├─ <b>scripts/</b>
+│  ├─ install-openshell.sh · enable-bridge-networking.sh   <span class="d">one-time host setup</span>
+│  ├─ setup.sh             <span class="d">venv, profile, provider (stores the key in the gateway)</span>
+│  ├─ preflight.sh         <span class="d">PASS/FAIL checklist incl. a real sandbox smoke test</span>
+│  ├─ reset.sh             <span class="d">delete demo sandboxes (--hard also removes the provider)</span>
+│  └─ e2e.py               <span class="d">drives the full flow over the WebSocket; --record writes the replay</span>
+├─ <b>recordings/success.json</b> <span class="d">a real run, played back by REPLAY=1</span>
+├─ <b>tests/</b>                  <span class="d">26 tests + fixtures captured from a real gateway</span>
+├─ <b>docs/cli-help/</b>          <span class="d">`openshell … --help` captured from v0.1.7</span>
+├─ <b>report/</b>                 <span class="d">this report</span>
+├─ Makefile · README.md · .env.example · .openshell-version</div>
+</section>
+
+<!-- ======================= 9 ======================= -->
+<section id="run">
+  <h2><span class="n">9</span>How to run it</h2>
+  <p class="lead">Everything below was run on this Mac. Setup is already done; the first block is for a fresh machine.</p>
+
+  <h3>Prerequisites</h3>
+  <div class="grid g3">
+    <div class="card"><h4>Docker Desktop ≥ 28</h4><p>Running. Landlock needs kernel ≥ 6.2, which on a Mac means Docker's Linux VM (ours: 7.0.14).</p></div>
+    <div class="card"><h4>Homebrew + Python 3.12</h4><p>The installer uses Homebrew. The app uses a local <code>.venv</code> (no uv or pip needed on PATH).</p></div>
+    <div class="card"><h4>An OpenRouter key</h4><p>Free models need no credits. It lives only in <code>.env</code> (git-ignored) and is read by <code>make setup</code>.</p></div>
+  </div>
+
+  <h3>One-time setup (fresh machine)</h3>
+<pre><button class="copy">copy</button><code><span class="c"># 1. put your key in .env  (edit the file; do NOT re-run cp, it overwrites)</span>
+cp .env.example .env &amp;&amp; open -e .env
+
+<span class="c"># 2. pinned OpenShell v0.1.7 + gateway on Docker bridge networking</span>
+make install
+
+<span class="c"># 3. venv, provider profile, provider (key → gateway), warm the image</span>
+make setup
+
+<span class="c"># 4. PASS/FAIL checklist</span>
+make preflight</code></pre>
+
+  <h3>Every demo</h3>
+<pre><button class="copy">copy</button><code>make preflight     <span class="c"># 20 s — run this first</span>
+make run           <span class="c"># → http://127.0.0.1:8000</span>
+
+<span class="c"># fallback if the network or model misbehaves:</span>
+make replay        <span class="c"># replays a real recorded run, needs no sandbox or model</span>
+
+make reset         <span class="c"># between rehearsals: deletes demo sandboxes</span></code></pre>
+
+  <h3>3-minute talk track</h3>
+  <ol class="steps">
+    <li><div>Open the page. <i>“The agent runs inside a kernel sandbox. The policy on the right is what it is allowed to do.”</i> Point at the Strict policy and the provider note.</div></li>
+    <li><div>Click <b>Run</b>. Watch the sandbox get created in about a second and the agent start. <i>“Its API key in here is a placeholder.”</i></div></li>
+    <li><div>The red denial card appears. <i>“The agent tried Wikipedia. Not allowed. We see exactly who (python3.12), what (wikipedia:443).”</i></div></li>
+    <li><div>Click <b>Allow this host</b>. <i>“One host, one binary, read-only. Applied to a running sandbox, no restart.”</i> Point at “applied in N s”.</div></li>
+    <li><div>Click <b>Retry task</b>. The agent fetches, calls the model, writes the file; the summary appears. Optionally click <b>Strict</b> to revoke the access again.</div></li>
+  </ol>
+
+  <h3>Useful commands</h3>
+  <table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>make test</code></td><td>26 pytest tests (parsing, rule merge, adapter, unlimited agent retries)</td></tr>
+    <tr><td><code>make e2e</code></td><td>Scripted denial → allow → retry → result against a running <code>make run</code></td></tr>
+    <tr><td><code>make record</code></td><td>Same, but saves <code>recordings/success.json</code> (do this after any change to the flow)</td></tr>
+    <tr><td><code>openshell sandbox list</code> · <code>openshell logs &lt;name&gt; --source sandbox</code></td><td>See what the app sees</td></tr>
+    <tr><td><code>openshell policy get &lt;name&gt; --base</code></td><td>The policy as stored; compare before/after Allow</td></tr>
+  </table>
+
+  <h3>Environment variables</h3>
+  <table>
+    <tr><th>Variable</th><th>Default</th><th>Meaning</th></tr>
+    <tr><td><code>OPENROUTER_API_KEY</code></td><td>— (in <code>.env</code>)</td><td>Read by <code>make setup</code> only</td></tr>
+    <tr><td><code>MODEL</code></td><td>nvidia/nemotron-3.5-lightning:free</td><td>Any OpenRouter model that supports tools</td></tr>
+    <tr><td><code>REPLAY</code></td><td>off</td><td><code>1</code> = play the recording</td></tr>
+    <tr><td><code>AGENT_MAX_STEPS</code></td><td><code>0</code> (no limit)</td><td>Optional cap on agent steps</td></tr>
+    <tr><td><code>RUN_TIMEOUT</code></td><td><code>900</code> s (<code>0</code> = none)</td><td>Wall-clock safety net per run</td></tr>
+    <tr><td><code>IDLE_TTL</code></td><td><code>1800</code> s</td><td>Idle sandbox is deleted</td></tr>
+  </table>
+
+  <h3>If something breaks</h3>
+  <table>
+    <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+    <tr><td>Sandbox error: “failed to connect to OpenShell server”</td><td>Docker Desktop host networking</td><td><code>sh scripts/enable-bridge-networking.sh</code></td></tr>
+    <tr><td>Gateway down after editing its config</td><td>A user <code>gateway.toml</code> <i>replaces</i> the Homebrew one</td><td>The script copies the Homebrew config and changes one line; re-run it</td></tr>
+    <tr><td><code>provider … missing</code> in preflight or UI</td><td>Setup not run, or <code>make hard-reset</code></td><td><code>make setup</code></td></tr>
+    <tr><td>Agent fails immediately: “key placeholder missing”</td><td>Provider not attached</td><td><code>make setup</code>, then Delete sandbox and Run</td></tr>
+    <tr><td>No denial card, agent just fails</td><td>Policy with zero network rules has no proxy</td><td>Keep the provider attached (it supplies the rule)</td></tr>
+    <tr><td><code>setup</code> fails on “profile already exists”</td><td>Old profile</td><td>Fixed in current script (deletes and re-imports)</td></tr>
+    <tr><td>Model is slow or errors</td><td>Free-tier limits</td><td>The agent retries transient errors itself; if it drags on, <code>make replay</code></td></tr>
+    <tr><td>Port 8000 busy</td><td>App already running</td><td><code>make run PORT=8080</code></td></tr>
+    <tr><td>Key vanished from <code>.env</code></td><td><code>cp .env.example .env</code> overwrote it</td><td>Edit the file instead of copying</td></tr>
+  </table>
+  <div class="callout warn"><b>Do not upgrade OpenShell before the demo</b>New releases ship weekly (Tuesdays) and this app was verified against v0.1.7. The pin lives in <code>.openshell-version</code>.</div>
+</section>
+
+<!-- ======================= 10 ======================= -->
+<section id="reliability">
+  <h2><span class="n">10</span>Reliability features</h2>
+  <div class="grid g3">
+    <div class="card"><span class="badge b-green">preflight</span><h4>make preflight</h4><p>Checks CLI version vs pin, gateway, Docker, bridge networking, provider, profile, policy lint, and runs a real sandbox: creates it, confirms a strict denial, confirms the key is a placeholder, deletes it. Prints PASS/FAIL per line.</p></div>
+    <div class="card"><span class="badge b-green">reset</span><h4>make reset</h4><p>Deletes every <code>osc-demo-*</code> sandbox and temp files. The app also does this at startup and at shutdown, and an idle timer removes forgotten sandboxes.</p></div>
+    <div class="card"><span class="badge b-green">replay</span><h4>REPLAY=1</h4><p>Plays a recorded real run (denial → allow → success) with realistic timing through the same UI. No Docker, no model, no network. Record a fresh one with <code>make record</code>.</p></div>
+    <div class="card"><span class="badge b-blue">timeouts</span><h4>Every call is bounded</h4><p>Each CLI call has a timeout; a run has a generous wall-clock net (900 s). Errors from OpenShell appear in the timeline and a banner, not just in a log.</p></div>
+    <div class="card"><span class="badge b-blue">agent</span><h4>No limit on tries</h4><p>The agent keeps going until it finishes and retries transient model errors forever. Bad keys (401/400) fail fast, and a policy denial stops it so you can approve.</p></div>
+    <div class="card"><span class="badge b-blue">secrets</span><h4>Scrubbed everywhere</h4><p>All CLI output passes through a scrubber that masks the key if it ever appeared. A repo-wide scan found it nowhere except <code>.env</code>.</p></div>
+  </div>
+</section>
+
+<!-- ======================= 11 ======================= -->
+<section id="reuse">
+  <h2><span class="n">11</span>Reusing this setup for other applications</h2>
+  <p class="lead">The app is really one pattern: <b>run untrusted work in a default-deny sandbox, surface what it was blocked from, let a human widen access minimally, retry.</b> Only a few pieces are specific to “summarise a web page”.</p>
+
+<figure>
+<svg viewBox="0 0 1040 250" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Inter,sans-serif">
+  <defs><marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4b5a6b"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="20" y="60" width="170" height="110" rx="12" fill="#fff" stroke="#cfd8e3"/><text x="105" y="88" font-weight="700">Workload</text><text x="105" y="110" font-size="11.5" fill="#5d6b7c">agent.py today</text><text x="105" y="128" font-size="11.5" fill="#5d6b7c">any CLI, script,</text><text x="105" y="144" font-size="11.5" fill="#5d6b7c">agent or tool server</text>
+    <rect x="230" y="60" width="170" height="110" rx="12" fill="#fff" stroke="#cfd8e3"/><text x="315" y="88" font-weight="700">Image</text><text x="315" y="110" font-size="11.5" fill="#5d6b7c">python:3.12-slim today</text><text x="315" y="128" font-size="11.5" fill="#5d6b7c">any OCI image that</text><text x="315" y="144" font-size="11.5" fill="#5d6b7c">has your tools</text>
+    <rect x="440" y="60" width="170" height="110" rx="12" fill="#eaf5d6" stroke="#b9dc7d"/><text x="525" y="88" font-weight="700" fill="#3f6e00">Provider profile</text><text x="525" y="110" font-size="11.5" fill="#33424f">which API + which</text><text x="525" y="128" font-size="11.5" fill="#33424f">binary + which key</text><text x="525" y="144" font-size="11.5" fill="#33424f">(openrouter today)</text>
+    <rect x="650" y="60" width="170" height="110" rx="12" fill="#eaf5d6" stroke="#b9dc7d"/><text x="735" y="88" font-weight="700" fill="#3f6e00">Policies</text><text x="735" y="110" font-size="11.5" fill="#33424f">strict / research</text><text x="735" y="128" font-size="11.5" fill="#33424f">+ filesystem layout</text><text x="735" y="144" font-size="11.5" fill="#33424f">+ allow rules</text>
+    <rect x="860" y="60" width="160" height="110" rx="12" fill="#e6eefc" stroke="#aac3f5"/><text x="940" y="88" font-weight="700" fill="#1e4fb8">Reusable core</text><text x="940" y="110" font-size="11.5" fill="#33424f">adapter · parser</text><text x="940" y="128" font-size="11.5" fill="#33424f">denial → rule loop</text><text x="940" y="144" font-size="11.5" fill="#33424f">WebSocket · replay</text>
+    <path d="M190 115 H230 M400 115 H440 M610 115 H650 M820 115 H860" stroke="#4b5a6b" stroke-width="1.8" fill="none" marker-end="url(#m1)"/>
+    <text x="520" y="30" font-size="12" font-weight="700" fill="#5d6b7c" letter-spacing="1">WHAT YOU SWAP →  →  →</text>
+    <text x="940" y="196" font-size="11" fill="#1e4fb8">stays the same</text>
+    <text x="105" y="196" font-size="11" fill="#b7791f">swap</text><text x="315" y="196" font-size="11" fill="#b7791f">swap</text><text x="525" y="196" font-size="11" fill="#3f6e00">swap</text><text x="735" y="196" font-size="11" fill="#3f6e00">swap</text>
+  </g>
+</svg>
+<figcaption>Four things change per application; the console, adapter, parser and protocol are reusable.</figcaption>
+</figure>
+
+  <h3>Swap-point map</h3>
+  <table>
+    <tr><th>Piece</th><th>In this app</th><th>For another application</th><th>Where</th></tr>
+    <tr><td>Workload</td><td><code>agent.py</code> (3 tools, OpenRouter)</td><td>A coding agent (OpenCode, Claude Code), a data-analysis script, a build/test runner, an MCP tool server, any command</td><td><code>session.run_agent()</code> argv · <code>agent/</code></td></tr>
+    <tr><td>Image</td><td><code>python:3.12-slim</code></td><td>Any OCI image with your tools (Node, Go, git, …). Must run as non-root or set <code>run_as_user</code></td><td><code>AGENT_IMAGE</code> env</td></tr>
+    <tr><td>Binary path</td><td><code>/usr/local/bin/python3.12</code></td><td>The <i>real</i> path of whatever opens network connections (<code>readlink -f</code>). A rule for a symlink never matches</td><td>profile + policies</td></tr>
+    <tr><td>Credential &amp; API</td><td>OpenRouter, bearer token</td><td>GitHub, Slack, OpenAI, AWS (SigV4), Google, your own API — write a profile with its host, header and env var</td><td><code>providers/*.yaml</code></td></tr>
+    <tr><td>Policy presets</td><td>Strict, Research</td><td>“Read-only repo”, “can call internal API”, “can install from PyPI”… same shape, different hosts and methods/paths</td><td><code>policies/*.yaml</code></td></tr>
+    <tr><td>Granularity of “Allow”</td><td>host:443, read-only</td><td>Method + path rules (<code>POST /repos/*/issues</code>), or wildcard hosts for package registries</td><td><code>parsing.build_allow_rule()</code></td></tr>
+    <tr><td>Result extraction</td><td><code>cat /sandbox/summary.md</code></td><td><code>sandbox download</code> for artifacts, a git diff, a test report</td><td><code>session.run_agent()</code></td></tr>
+    <tr><td>Event vocabulary</td><td>agent.* JSON lines</td><td>Any process that prints JSON lines; or parse plain stdout lines into events</td><td><code>parse_agent_line()</code></td></tr>
+  </table>
+
+  <h3>Example mappings</h3>
+  <div class="grid g2">
+    <div class="card"><span class="badge b-violet">Coding agent</span><h4>“Let an agent fix a bug in my repo”</h4>
+      <p><b>Image</b> with the agent CLI + git. <b>Upload</b> the repo to the workspace. <b>Provider</b> for the model API. <b>Strict</b> = model only; <b>allow</b> as needed: package registry (npm/PyPI), GitHub read-only. Show the denial when it tries <code>npm install</code>, approve once, retry. <b>Result</b> = a diff you review.</p></div>
+    <div class="card"><span class="badge b-violet">Untrusted code runner</span><h4>“Run a user's script safely”</h4>
+      <p><b>No provider, no network</b> at all; filesystem limited to a scratch directory; resource limits (<code>--cpu</code>, <code>--memory</code>). Use <code>--no-keep</code> so the sandbox is deleted after the command. The console becomes a log viewer.</p></div>
+    <div class="card"><span class="badge b-violet">Data/analytics agent</span><h4>“Query our warehouse, summarise”</h4>
+      <p>Provider for the warehouse API with <b>method/path-scoped</b> rules (GET/read only); an extra provider for the model. Credentials never reach the agent's prompt or environment, so an injected prompt cannot exfiltrate them.</p></div>
+    <div class="card"><span class="badge b-violet">Tool/MCP approval</span><h4>“Approve each new tool an agent wants”</h4>
+      <p>Treat each new MCP/JSON-RPC server as a network endpoint; the denial card becomes an approval request. OpenShell also supports MCP/JSON-RPC-aware rules and a policy <i>advisor</i> where the agent proposes its own rule for you to approve.</p></div>
+  </div>
+
+  <h3>Recipe: adapt it in six steps</h3>
+  <ol class="steps">
+    <li><div><b>Pick and test the image.</b> <code>openshell sandbox create --from &lt;image&gt; -- sh</code>. Note the user it runs as and the real path of each program that needs the network (<code>readlink -f $(command -v node)</code>).</div></li>
+    <li><div><b>Write the provider profile</b> for each API: host, port, credential env var, header, and the binary paths allowed to use it. <code>openshell profile lint -f …</code>, then import, then <code>provider create --from-existing</code>.</div></li>
+    <li><div><b>Write the presets.</b> Keep <code>filesystem_policy</code>, <code>landlock</code>, <code>process</code> identical across presets; vary only <code>network_policies</code>. Add them to <code>PRESETS</code> in <code>session.py</code> and to the preset buttons.</div></li>
+    <li><div><b>Point the runner at your workload.</b> Change the upload and the <code>exec</code> argv in <code>session.run_agent()</code>. If it does not print JSON lines, wrap its stdout lines as events.</div></li>
+    <li><div><b>Decide how “Allow” should widen.</b> Start with host + binary + read-only, then tighten with method/path, or loosen with a wildcard host if you must.</div></li>
+    <li><div><b>Capture fixtures.</b> Run a deny and an allow once, save <code>openshell logs</code> and <code>policy get --base -o json</code> into <code>tests/fixtures</code>, adjust the regex in <code>parsing.py</code> if the log shape differs, and re-record the replay.</div></li>
+  </ol>
+
+  <h3>Other ways to integrate OpenShell</h3>
+  <table>
+    <tr><th>Option</th><th>When to prefer it</th></tr>
+    <tr><td><b>CLI adapter</b> (this app)</td><td>Fastest path; transparent; every operation exists. Best for a demo or internal tool.</td></tr>
+    <tr><td><b>Python / TypeScript / Go / Rust SDK</b></td><td>Embedding sandboxes in a larger service. You get typed gRPC calls; log streaming and policy-wait need more code. Only the adapter changes.</td></tr>
+    <tr><td><b>Native policy advisor</b> (<code>rule get / approve</code>)</td><td>You want OpenShell to draft rules itself, run its policy prover for risk checks, and let the agent request access. Needs no custom parser.</td></tr>
+    <tr><td><b>Kubernetes / microVM drivers</b></td><td>Multi-user or production deployments. Same policies and providers; different compute driver.</td></tr>
+  </table>
+</section>
+
+<!-- ======================= 12 ======================= -->
+<section id="facts">
+  <h2><span class="n">12</span>Facts, limits, and honesty notes</h2>
+  <div class="grid g2">
+    <div class="card"><h4>What was verified on this machine</h4>
+      <p><span class="tick">✓</span> Strict run → denial with host, port and binary</p>
+      <p><span class="tick">✓</span> “Allow this host” applied live (6–10 s measured in the app), retry succeeded with the real model, result shown</p>
+      <p><span class="tick">✓</span> Research preset (3 hosts), Strict (revokes them), custom YAML round-trip</p>
+      <p><span class="tick">✓</span> Landlock blocks writes to <code>/etc</code>, <code>/usr</code>; the key is a placeholder in the sandbox env</p>
+      <p><span class="tick">✓</span> 26 tests, preflight, replay mode, shutdown cleanup (no sandboxes left behind)</p>
+      <p><span class="tick">✓</span> UI clicked through in a browser with the real model</p></div>
+    <div class="card"><h4>Known limits &amp; deviations</h4>
+      <p><span class="cross">!</span> <code>inference.local</code> no longer exists in 0.1.x; native endpoint used instead</p>
+      <p><span class="cross">!</span> Docker Desktop needs bridge networking (host mode failed)</p>
+      <p><span class="cross">!</span> Free models are slow or flaky at times; replay is the safety net</p>
+      <p><span class="cross">!</span> Apply time varies 3–10 s: the sandbox polls for policy changes</p>
+      <p><span class="cross">!</span> Filesystem/process changes need a new sandbox (by design in OpenShell)</p>
+      <p><span class="cross">!</span> Single user, no auth, in-memory — a demo console, not a service</p>
+      <p><span class="cross">!</span> The L7 (HTTP method/path) denial log shape is implemented from the docs; the verified captures are L4 connection denials</p></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h4>Glossary</h4>
+    <p><b>Gateway</b> — OpenShell's control plane (service on <code>:17670</code>). <b>Sandbox</b> — the isolated container where the agent runs. <b>Supervisor</b> — OpenShell process outside the agent that enforces policy and runs the proxy. <b>Provider</b> — a stored credential plus the rules for using it. <b>Profile</b> — the schema that defines a provider (hosts, binaries, env vars). <b>Landlock</b> — Linux kernel filesystem access control. <b>seccomp</b> — Linux syscall filter. <b>OPA</b> — the policy engine the proxy uses. <b>OCSF</b> — the structured event format behind the log lines.</p>
+  </div>
+</section>
+
+</main>
+
+<footer><div class="wrap">Generated for the Sandboxed Agent Console project · OpenShell v0.1.7 · this page is a single self-contained file (<code>report/index.html</code>) and works offline.</div></footer>
+
+<script>
+  // copy buttons
+  document.querySelectorAll('button.copy').forEach(b=>b.addEventListener('click',()=>{
+    const code=b.parentElement.querySelector('code').innerText;
+    navigator.clipboard.writeText(code).then(()=>{b.textContent='copied';setTimeout(()=>b.textContent='copy',1200)});
+  }));
+  // highlight current section in nav
+  const links=[...document.querySelectorAll('nav.toc a')];
+  const secs=links.map(a=>document.querySelector(a.getAttribute('href')));
+  const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id))}})},{rootMargin:'-40% 0px -55% 0px'});
+  secs.forEach(s=>s&&io.observe(s));
+</script>
+</body>
+</html>

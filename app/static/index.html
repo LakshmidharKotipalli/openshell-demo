@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandboxed Agent Console · OpenShell</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">▣</span>
+      <div>
+        <h1>Sandboxed Agent Console</h1>
+        <p>An AI agent running inside an <b>NVIDIA OpenShell</b> sandbox. Policies are enforced by the kernel, not by the agent.</p>
+      </div>
+    </div>
+    <div class="pills">
+      <span id="pill-mode" class="pill">…</span>
+      <span id="pill-gw" class="pill">gateway …</span>
+      <span id="pill-prov" class="pill">provider …</span>
+      <span id="pill-conn" class="pill bad">disconnected</span>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main>
+    <section class="col-left">
+      <div class="card">
+        <h2>Task</h2>
+        <label for="task">What should the agent do?</label>
+        <textarea id="task" rows="3">Research this page and write a short summary of what a sandbox is in computer security.</textarea>
+        <label for="url">Source URL</label>
+        <input id="url" type="text" value="https://en.wikipedia.org/wiki/Sandbox_(computer_security)">
+        <div class="row">
+          <button id="btn-run" class="primary">Run</button>
+          <button id="btn-retry" disabled>Retry</button>
+          <span class="spacer"></span>
+          <span id="sb-name" class="muted">no sandbox</span>
+          <button id="btn-del" class="ghost" disabled title="Delete the sandbox">Delete sandbox</button>
+        </div>
+        <div class="statusline"><span id="status-dot" class="dot"></span><span id="status-text">idle</span></div>
+      </div>
+
+      <div class="card grow">
+        <h2>Live timeline</h2>
+        <div id="timeline" class="timeline"><div class="empty">Events appear here as the sandbox is created and the agent runs.</div></div>
+      </div>
+    </section>
+
+    <section class="col-right">
+      <div class="card">
+        <div class="card-head">
+          <h2>Sandbox policy</h2>
+          <span id="pol-meta" class="muted"></span>
+        </div>
+        <div class="row presets">
+          <button id="btn-strict" class="preset">Strict</button>
+          <button id="btn-research" class="preset">Research</button>
+          <span class="spacer"></span>
+          <span id="apply-time" class="badge hidden"></span>
+        </div>
+        <textarea id="policy" class="mono" rows="19" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="btn-apply">Apply edited YAML</button>
+          <span class="muted small">Network rules reload live. Filesystem / process settings are startup-only.</span>
+        </div>
+        <div class="note">Also active: a provider rule allowing <code>python3.12</code> to reach <code>openrouter.ai</code> (credential injected outside the sandbox).</div>
+      </div>
+
+      <div class="card">
+        <h2>Result</h2>
+        <div id="result" class="result"><div class="empty">The agent's output file appears here.</div></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

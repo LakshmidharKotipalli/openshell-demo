@@ -1,0 +1,53 @@
+[1794244240.600] [sandbox] [INFO ] [openshell_supervisor] Starting sandbox supervision command=["sleep", "infinity"]
+[1794244240.601] [sandbox] [INFO ] [openshell_sandbox_backend::runtime_initiated] Runtime-initiated Sandbox Protocol listener ready
+[1794244240.831] [sandbox] [INFO ] [openshell_supervisor] Fetching sandbox policy via gRPC endpoint=https://host.docker.internal:17670 sandbox=osc-probe sandbox_id=a0e6147b-592a-42e4-bdc0-63d93f7ce895
+[1794244240.849] [sandbox] [INFO ] [openshell_supervisor_network::opa] Configured OPA runtime binary identity mode require_binary_identity=true source=proto
+[1794244240.849] [sandbox] [OCSF ] [ocsf] CONFIG:CONFIGURED [INFO] OPA runtime binary identity mode configured [source:proto require_binary_identity:true] [source:proto]
+[1794244240.857] [sandbox] [OCSF ] [ocsf] CONFIG:DISABLED [INFO] OTLP agent trace relay inactive: not enabled by the gateway
+[1794244240.858] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary attached backend=openshell-sandbox
+[1794244240.859] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary enforcement confirmed backend=openshell-sandbox
+[1794244240.861] [sandbox] [OCSF ] [ocsf] CONFIG:ENABLED [INFO] TLS termination enabled: ephemeral CA generated
+[1794244240.861] [sandbox] [OCSF ] [ocsf] CONFIG:READY [INFO] Policy DNS connected to isolation boundary
+[1794244240.861] [sandbox] [OCSF ] [ocsf] NET:LISTEN [INFO] 127.0.0.1:3128
+[1794244240.861] [sandbox] [WARN ] [openshell_supervisor_network::proxy] host.openshell.internal maps to a non-link-local IP; trusted-gateway SSRF exemption disabled ip=192.168.65.254
+[1794244240.871] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary agent started backend=openshell-sandbox
+[1794244240.872] [sandbox] [OCSF ] [ocsf] SSH:LISTEN [INFO]
+[1794244240.872] [sandbox] [INFO ] [openshell_supervisor] Control-mode access plane started backend=openshell-sandbox
+[1794244240.881] [sandbox] [OCSF ] [ocsf] CONFIG:LOADED [INFO] Acknowledged initial policy revision as loaded [version:1] [hash:0f3eb4fe61da455c37bcd9436027463ea76cae627d7e37e2465c22e7d04a7d7e]
+[1794244240.882] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] host.docker.internal:17670
+[1794244255.198] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=20f439e9-9fa1-4dda-8bfd-2aa8ec692f9b, target=unix:/run/openshell/ssh.sock)
+[1794244255.198] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244255.235] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=20f439e9-9fa1-4dda-8bfd-2aa8ec692f9b, target=unix:/run/openshell/ssh.sock)
+[1794244255.267] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=11dfb097-ae89-4f3c-858e-7d050f646301, target=unix:/run/openshell/ssh.sock)
+[1794244255.267] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244255.301] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=11dfb097-ae89-4f3c-858e-7d050f646301, target=unix:/run/openshell/ssh.sock)
+[1794244268.280] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=ffeac7e4-46fc-4bd1-89d6-a32fbcf41508, target=unix:/run/openshell/ssh.sock)
+[1794244268.281] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244268.309] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=ffeac7e4-46fc-4bd1-89d6-a32fbcf41508, target=unix:/run/openshell/ssh.sock)
+[1794244268.341] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=13057220-de6f-41a6-b1c7-99021f57bd7f, target=unix:/run/openshell/ssh.sock)
+[1794244268.341] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244268.515] [sandbox] [OCSF ] [ocsf] NET:REFUSE [MED] DENIED en.wikipedia.org [reason:policy_dns_ineligible]
+[1794244268.515] [sandbox] [OCSF ] [ocsf] CONFIG:OBSERVATION [INFO] Policy DNS staged unapproved name en.wikipedia.org synthetic=198.18.0.2 for TCP policy review
+[1794244268.516] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=198.18.0.2:443 reason=network connections not allowed by policy
+[1794244268.516] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/local/bin/python3.12(0) -> en.wikipedia.org:443 [reason:transparent_tcp_policy_denied]
+[1794244268.523] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=13057220-de6f-41a6-b1c7-99021f57bd7f, target=unix:/run/openshell/ssh.sock)
+[1794244270.870] [sandbox] [INFO ] [openshell_supervisor] Flushed denial analysis to gateway proposals=1 sandbox_name=osc-probe summaries=1
+[1794244290.914] [sandbox] [OCSF ] [ocsf] CONFIG:DETECTED [INFO] Settings poll: config change detected [old_revision:11064481260865336529 new_revision:2344780536652362344 policy_changed:true provider_env_changed:true]
+[1794244290.931] [sandbox] [INFO ] [openshell_supervisor_network::opa] Configured OPA runtime binary identity mode require_binary_identity=true source=proto
+[1794244290.931] [sandbox] [OCSF ] [ocsf] CONFIG:CONFIGURED [INFO] OPA runtime binary identity mode configured [source:proto require_binary_identity:true] [source:proto]
+[1794244290.936] [sandbox] [OCSF ] [ocsf] CONFIG:LOADED [INFO] Policy reloaded successfully [policy_hash:2da1d3d974a59c5bb7eb7503f6943a4f78736716f37778ce93c9c2a05e4bb55b] [hash:2da1d3d974a59c5bb7eb7503f6943a4f78736716f37778ce93c9c2a05e4bb55b]
+[1794244290.939] [sandbox] [WARN ] [openshell_supervisor::endpoint_status] Endpoint status report failed transiently; retaining immutable snapshot attempt=1 error=code: 'The system is not in a state required for the operation's execution', message: "tool server endpoint status revisions do not match the current sandbox configuration"
+[1794244291.342] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=54e31d38-953c-4920-8ec6-fccbc4c935f1, target=unix:/run/openshell/ssh.sock)
+[1794244291.342] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244291.551] [sandbox] [OCSF ] [ocsf] CONFIG:PUBLISHED [INFO] Policy DNS mapped example.com resolved=104.20.23.154,172.66.147.243 synthetic=198.18.0.3 ports=443 mapping_id=ab4b3397-9cbf-45d3-8414-85a968031798
+[1794244291.577] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] ALLOWED /usr/local/bin/python3.12(0) -> example.com:443 [policy:probe_httpbin engine:opa]
+[1794244291.647] [sandbox] [OCSF ] [ocsf] HTTP:GET [INFO] ALLOWED GET https://example.com/ [policy:probe_httpbin engine:l7]
+[1794244291.686] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=54e31d38-953c-4920-8ec6-fccbc4c935f1, target=unix:/run/openshell/ssh.sock)
+[1794244291.726] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=9157945d-bdca-4349-9bb9-35c96ee1966a, target=unix:/run/openshell/ssh.sock)
+[1794244291.726] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794244291.886] [sandbox] [OCSF ] [ocsf] NET:REFUSE [MED] DENIED en.wikipedia.org [reason:policy_dns_ineligible]
+[1794244291.886] [sandbox] [OCSF ] [ocsf] CONFIG:OBSERVATION [INFO] Policy DNS staged unapproved name en.wikipedia.org synthetic=198.18.0.2 for TCP policy review
+[1794244291.887] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=198.18.0.2:443 reason=endpoint en.wikipedia.org:443 is not allowed by any policy
+[1794244291.887] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/local/bin/python3.12(0) -> en.wikipedia.org:443 [reason:transparent_tcp_policy_denied]
+[1794244291.895] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=9157945d-bdca-4349-9bb9-35c96ee1966a, target=unix:/run/openshell/ssh.sock)
+[1794244300.872] [sandbox] [INFO ] [openshell_supervisor] Flushed denial analysis to gateway proposals=1 sandbox_name=osc-probe summaries=1
