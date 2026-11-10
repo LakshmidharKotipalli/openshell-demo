@@ -111,13 +111,19 @@
       <span>reason</span><span>${esc(ev.reason || "not allowed by any policy")}</span></div>
       <div class="actions"></div>`;
     const actions = card.querySelector(".actions");
+    el.tl.appendChild(card);
+    el.tl.scrollTop = el.tl.scrollHeight;
+    if (ev.scope === "http") {
+      // The host is reachable but this method/path is not. A read-only host rule would change nothing,
+      // so there is no one-click fix: the operator decides how far to widen access.
+      actions.textContent = "This host is already reachable; the request's method or path is not allowed. Edit the rule's access in the policy YAML and click “Apply edited YAML”.";
+      return;
+    }
     const allow = document.createElement("button");
     allow.className = "allow"; allow.textContent = "Allow this host";
     allow.title = `Adds a minimal read-only rule for ${ev.host}:${ev.port} limited to ${ev.binary}`;
     allow.onclick = () => { allow.disabled = true; send("allow_host", { host: ev.host, port: ev.port, binary: ev.binary }); };
     actions.appendChild(allow);
-    el.tl.appendChild(card);
-    el.tl.scrollTop = el.tl.scrollHeight;
     denialCards[ev.host] = { card, actions, allow };
   }
 

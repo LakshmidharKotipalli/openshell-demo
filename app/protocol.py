@@ -1,4 +1,9 @@
-"""WebSocket message schema (client -> server). Server -> client messages are plain dicts:
+"""WebSocket message schema (client -> server).
+
+A client must send {"type": "hello", "last_seq": N} after connecting: the server answers with the events
+after N and only then starts live delivery (events, state, policy, result broadcasts).
+
+Server -> client messages are plain dicts:
 
   {"type": "event", "seq": n, "kind": "...", "ts": ..., ...}   timeline item (buffered, resumable)
   {"type": "state", "status": ..., "sandbox": ..., "preset": ..., "mode": "live"|"replay", ...}

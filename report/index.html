@@ -501,7 +501,7 @@ NET:OPEN [MED] <span class="r">DENIED</span>
 │  ├─ reset.sh             <span class="d">delete demo sandboxes (--hard also removes the provider)</span>
 │  └─ e2e.py               <span class="d">drives the full flow over the WebSocket; --record writes the replay</span>
 ├─ <b>recordings/success.json</b> <span class="d">a real run, played back by REPLAY=1</span>
-├─ <b>tests/</b>                  <span class="d">26 tests + fixtures captured from a real gateway</span>
+├─ <b>tests/</b>                  <span class="d">68 tests + fixtures captured from a real gateway</span>
 ├─ <b>docs/cli-help/</b>          <span class="d">`openshell … --help` captured from v0.1.7</span>
 ├─ <b>report/</b>                 <span class="d">this report</span>
 ├─ Makefile · README.md · .env.example · .openshell-version</div>
@@ -677,7 +677,7 @@ make reset         <span class="c"># between rehearsals: deletes demo sandboxes<
       <p><span class="tick">✓</span> “Allow this host” applied live (6–10 s measured in the app), retry succeeded with the real model, result shown</p>
       <p><span class="tick">✓</span> Research preset (3 hosts), Strict (revokes them), custom YAML round-trip</p>
       <p><span class="tick">✓</span> Landlock blocks writes to <code>/etc</code>, <code>/usr</code>; the key is a placeholder in the sandbox env</p>
-      <p><span class="tick">✓</span> 26 tests, preflight, replay mode, shutdown cleanup (no sandboxes left behind)</p>
+      <p><span class="tick">✓</span> 68 tests, preflight, replay mode, shutdown cleanup (no sandboxes left behind)</p>
       <p><span class="tick">✓</span> UI clicked through in a browser with the real model</p></div>
     <div class="card"><h4>Known limits &amp; deviations</h4>
       <p><span class="cross">!</span> <code>inference.local</code> no longer exists in 0.1.x; native endpoint used instead</p>

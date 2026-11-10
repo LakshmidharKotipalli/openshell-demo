@@ -14,7 +14,7 @@ User flow: type a task → an agent runs **inside an OpenShell sandbox** → liv
 - Frontend: single static page (HTML/CSS/JS, no build).
 - Agent: `agent/agent.py`, stdlib only, runs in a `python:3.12-slim` sandbox as uid 1000. Tools: `fetch_url`, `read_file`, `write_file`. Prints one JSON object per line on stdout.
 - Model: OpenRouter, default `nvidia/nemotron-3.5-lightning:free` (env `MODEL`).
-- ~2,400 lines of code/config; 26 pytest tests.
+- ~2,400 lines of code/config; 68 pytest tests.
 
 ## 3. Architecture (data flow)
 ```
@@ -59,7 +59,7 @@ Event kinds: sandbox_creating, sandbox_ready, run_started, agent.{agent_start,ll
 app/{main,session,openshell_client,parsing,protocol}.py   app/static/{index.html,style.css,app.js}
 agent/agent.py   policies/{strict,research}.yaml   providers/openrouter-agent.yaml
 scripts/{install-openshell,enable-bridge-networking,setup,preflight,reset}.sh   scripts/e2e.py
-recordings/success.json (real run, used by REPLAY=1)   tests/ (26 tests + fixtures captured from the real gateway)
+recordings/success.json (real run, used by REPLAY=1)   tests/ (68 tests + fixtures captured from the real gateway)
 docs/cli-help/ (openshell --help captured from v0.1.7)   report/ (visual HTML report + this file)
 Makefile  README.md  .env.example  .openshell-version  requirements.txt
 ```
@@ -82,7 +82,7 @@ Env: `MODEL`, `REPLAY=1`, `AGENT_MAX_STEPS` (default 0 = unlimited), `RUN_TIMEOU
 - An environment hook in the session blocked reading outside the project folder, so gateway logs outside it were never read directly.
 
 ## 11. What was verified
-Real-model end-to-end run (strict denial → Allow → retry → 1.2–1.4k-char summary) via `scripts/e2e.py` and by clicking through the UI; 26 tests; `make preflight` all PASS incl. a real sandbox smoke test; REPLAY mode; shutdown cleanup leaves no sandboxes; key placeholder verified inside the sandbox.
+Real-model end-to-end run (strict denial → Allow → retry → 1.2–1.4k-char summary) via `scripts/e2e.py` and by clicking through the UI; 26 tests at the time (68 now); `make preflight` all PASS incl. a real sandbox smoke test; REPLAY mode; shutdown cleanup leaves no sandboxes; key placeholder verified inside the sandbox.
 
 ## 12. Reusing the pattern
 Swap points: workload (`agent.py` / the `exec` argv in `session.run_agent()`), image (`AGENT_IMAGE`), provider profile (`providers/*.yaml`: host, binary path, credential env var), policy presets (`policies/*.yaml`, keep non-network blocks identical), granularity of "Allow" (`parsing.build_allow_rule()`), result extraction. Reusable core: adapter, parser, denial→rule loop, WebSocket protocol, replay. Alternatives: OpenShell SDKs (Python/TS/Go/Rust), OpenShell's native policy advisor (`openshell rule get/approve`), Kubernetes/microVM drivers.

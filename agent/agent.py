@@ -188,15 +188,18 @@ def tool_calls_from(msg: dict) -> list[dict]:
     if calls:
         return calls
     content = msg.get("content") or ""
-    for m in re.finditer(r"\{.*?\}(?=\s*(?:\{|$|```|\n))", content, re.S):
+    decoder, pos = json.JSONDecoder(), content.find("{")
+    while pos != -1:  # scan for JSON objects anywhere in the text, single-line or pretty-printed
         try:
-            obj = json.loads(m.group(0))
+            obj, end = decoder.raw_decode(content, pos)
         except ValueError:
+            pos = content.find("{", pos + 1)
             continue
         name = obj.get("tool") or obj.get("name")
         args = obj.get("args") or obj.get("arguments") or obj.get("parameters")
         if name in {"fetch_url", "read_file", "write_file"} and isinstance(args, dict):
             calls.append({"id": f"txt{len(calls)}", "name": name, "args": args, "native": False})
+        pos = content.find("{", end)
     return calls
 
 

@@ -77,12 +77,28 @@ class Session:
                 "can_retry": self.last_task is not None and self.status in ("blocked", "error", "done")}
 
     async def on_connect(self, ws: WebSocket, last_seq: int = 0) -> None:
-        self.clients.add(ws)
+        # Snapshot only. The client joins the broadcast set in resume(), once it has the backlog.
         await self.send(ws, self.state_msg())
-        # Backlog is replayed when the client sends {"type":"hello","last_seq":N} (see main.py).
         await self.send_policy(ws)
         if self.last_result:
             await self.send(ws, self.last_result)
+
+    async def resume(self, ws: WebSocket, last_seq: int) -> None:
+        """Answer {"type":"hello","last_seq":N}: replay the events after N, then start live delivery.
+
+        Live events must not reach the client before the backlog does: it keeps only a high-water mark, so an
+        early live event would make it discard the older ones as already seen."""
+        if last_seq > len(self.log):
+            # The client is ahead of this log (server restarted or session reset while it was away):
+            # it would silently drop every new event as "already seen". Start it over.
+            await self.send(ws, {"type": "reset"})
+            last_seq = 0
+        i = last_seq
+        while i < len(self.log):  # the log can grow while we send; loop until caught up
+            await self.send(ws, self.log[i])
+            i += 1
+        self.clients.add(ws)  # no await since the loop check: nothing can slip in between
+        await self.send(ws, self.state_msg())  # state may have changed since the snapshot
 
     # ---- command dispatch ------------------------------------------------
     async def handle(self, ws: WebSocket, msg: Any) -> None:

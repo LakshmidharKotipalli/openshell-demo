@@ -1,6 +1,8 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-pyyaml>=6
-pytest>=8
-httpx>=0.27        # starlette.testclient (tests/test_security.py)
-websockets>=12     # scripts/e2e.py (make e2e / make record)
+# Bounded to the current major line of each package so a fresh `make setup` cannot pick up a breaking release.
+# For an exact, reproducible set: .venv/bin/python -m pip freeze > requirements.lock (from a venv that passes make test).
+fastapi>=0.110,<1
+uvicorn[standard]>=0.29,<1
+pyyaml>=6,<7
+pytest>=8,<10
+httpx>=0.27,<1          # starlette.testclient (tests/test_security.py)
+websockets>=12          # scripts/e2e.py (make e2e / make record); uvicorn[standard] constrains the upper end

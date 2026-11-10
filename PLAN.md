@@ -1,5 +1,8 @@
 # Sandboxed Agent Console on NVIDIA OpenShell — implementation plan
 
+> **Historical.** This is the plan written before the build. Several details changed along the way (workspace path,
+> no custom image or Dockerfile, module names, provider name). `README.md` describes the project as built.
+
 ## Context
 A runnable web app (FastAPI + one static HTML page). A task runs an agent inside an OpenShell sandbox. The user watches a live timeline, sees policy denials, clicks "Allow this host" to hot-apply a network rule, retries, and sees the result. Demo is tomorrow evening, so reliability (preflight, reset, REPLAY fallback, tests) matters more than features.
 

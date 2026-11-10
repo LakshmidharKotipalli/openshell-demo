@@ -117,3 +117,15 @@ def test_parallel_tool_calls_keep_history_valid(monkeypatch, tmp_path, capsys):
         assert ids == answered
     events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert events[0]["task"] == "-starts with a dash" and events[-1]["status"] == "ok"
+
+
+def test_json_in_text_tool_calls_single_line_and_pretty_printed():
+    one_line = 'I will fetch it. {"tool": "fetch_url", "args": {"url": "https://a.example/"}} Then summarise.'
+    pretty = 'Sure:\n```json\n{\n  "name": "write_file",\n  "arguments": {\n    "path": "summary.md",\n    "content": "- {braces} ok"\n  }\n}\n```'
+    assert agent.tool_calls_from({"content": one_line}) == [
+        {"id": "txt0", "name": "fetch_url", "args": {"url": "https://a.example/"}, "native": False}]
+    got = agent.tool_calls_from({"content": pretty})
+    assert [(c["name"], c["args"]["content"]) for c in got] == [("write_file", "- {braces} ok")]
+    # not tool calls: unknown tool, args not an object, broken JSON, plain prose with braces
+    for text in ('{"tool": "rm_rf", "args": {}}', '{"tool": "fetch_url", "args": "x"}', '{"tool": "fetch_url", ', "use {curly} words"):
+        assert agent.tool_calls_from({"content": text}) == []

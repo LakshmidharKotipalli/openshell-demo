@@ -18,7 +18,7 @@ Task → sandbox created (strict policy) → agent fetches a URL → DENIED (hos
 | **OpenShell** (`OPENSHELL_VERSION`) | **v0.1.7** (stable, 2026-11-03), recorded in `.openshell-version` |
 | Compute driver | Docker (Docker Desktop, Apple Silicon) |
 | Sandbox image | `python:3.12-slim` (pulled by the gateway) |
-| Python (host) | 3.12, FastAPI + uvicorn |
+| Python (host) | 3.12, FastAPI + uvicorn (major versions bounded in `requirements.txt`) |
 | Model | `nvidia/nemotron-3.5-lightning:free` on OpenRouter (override with `MODEL=`) |
 
 OpenShell releases weekly (Tuesdays). **Do not upgrade before a demo**; the installer below pins the version.
@@ -52,8 +52,9 @@ make setup                      # venv, provider profile, provider (stores the k
 make preflight                  # PASS/FAIL checklist
 ```
 
-`make install` is skipped if OpenShell v0.1.7 is already installed; `scripts/enable-bridge-networking.sh` is the
-Docker Desktop fix described under *Notes on OpenShell 0.1.7* below.
+`make install` is safe to re-run: it skips the installer if OpenShell v0.1.7 is already installed (otherwise it runs the
+installer script from the `v0.1.7` tag), and skips `scripts/enable-bridge-networking.sh` (the Docker Desktop fix described
+under *Notes on OpenShell 0.1.7* below) if the gateway config already uses bridge networking.
 
 ## Run
 

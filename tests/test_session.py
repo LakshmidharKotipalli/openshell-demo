@@ -144,3 +144,23 @@ def test_replay_survives_reconnect_after_allow_host():
             session_mod.asyncio.sleep = monkeypatch_sleep
 
     run(go())
+
+
+def test_live_events_start_only_after_the_backlog_is_replayed():
+    """A reconnecting client keeps a high-water mark, so a live event that overtakes the backlog would make it
+    drop the older events. Nothing live may be delivered before hello has been answered."""
+    async def go():
+        s = Session(FakeClient())
+        await s.emit("info", message="1")
+        await s.emit("info", message="2")
+        ws = FakeWS()
+        await s.on_connect(ws)
+        await s.emit("info", message="3")  # arrives between connect and hello
+        assert ws.of("event") == []
+        await s.resume(ws, 1)  # the client already has event 1
+        assert [e["seq"] for e in ws.of("event")] == [2, 3]
+        assert ws.sent[-1]["type"] == "state"
+        await s.emit("info", message="4")
+        assert [e["seq"] for e in ws.of("event")] == [2, 3, 4]
+
+    run(go())

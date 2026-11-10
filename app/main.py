@@ -96,15 +96,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
             except ValidationError as e:
                 await ws.send_json({"type": "error", "ref": ref, "message": "bad message: " + e.errors()[0]["msg"]})
                 continue
-            if msg.type == "hello":  # resume: replay events after last_seq (on_connect sent none yet)
-                last_seq = msg.last_seq
-                if last_seq > len(session.log):
-                    # The client is ahead of this log (server restarted or session reset while it was away):
-                    # it would silently drop every new event as "already seen". Start it over.
-                    await session.send(ws, {"type": "reset"})
-                    last_seq = 0
-                for ev in session.log[last_seq:]:
-                    await session.send(ws, ev)
+            if msg.type == "hello":  # replay events after last_seq, then join the live broadcast
+                await session.resume(ws, msg.last_seq)
                 continue
             task = asyncio.create_task(_run(ws, msg, ref))
             _tasks.add(task)
