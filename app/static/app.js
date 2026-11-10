@@ -64,15 +64,15 @@
       case "agent.agent_start":
         return addRow(ts, "🤖", `Agent started · model <code>${esc(ev.model)}</code>`, "", `API key in sandbox env: ${ev.key_in_env} (real key never enters the sandbox)`);
       case "agent.llm_request":
-        return addRow(ts, "💭", `Thinking (step ${ev.step})…`, "dim");
+        return addRow(ts, "💭", `Thinking (step ${esc(ev.step)})…`, "dim");
       case "agent.llm_retry":
-        return addRow(ts, "↻", `Model call failed, retrying (attempt ${ev.attempt})`, "warn", ev.reason);
+        return addRow(ts, "↻", `Model call failed, retrying (attempt ${esc(ev.attempt)})`, "warn", ev.reason);
       case "agent.llm_response":
         return addRow(ts, "💬", ev.tools && ev.tools.length ? `Model chose tool: <code>${esc(ev.tools.join(", "))}</code>` : "Model replied with text", "dim", ev.text || "");
       case "agent.tool_call":
         return addRow(ts, "🔧", `<code>${esc(ev.tool)}</code>(${esc(JSON.stringify(ev.args))})`, "");
       case "agent.tool_result":
-        return addRow(ts, ev.ok ? "✔" : "✖", `<code>${esc(ev.tool)}</code> ${ev.ok ? "returned" : "failed"} · ${ev.chars} chars`, ev.ok ? "ok" : "warn", ev.preview);
+        return addRow(ts, ev.ok ? "✔" : "✖", `<code>${esc(ev.tool)}</code> ${ev.ok ? "returned" : "failed"} · ${esc(ev.chars)} chars`, ev.ok ? "ok" : "warn", ev.preview);
       case "agent.policy_denied":
         return addRow(ts, "⛔", `Agent: network request to <code>${esc(ev.host)}</code> was blocked`, "bad", ev.detail);
       case "agent.fs_denied":
@@ -182,7 +182,7 @@
   // ---------- wiring ----------
   el.run.onclick = () => { el.result.innerHTML = '<div class="empty">Running…</div>'; send("run_task", { task: el.task.value.trim(), url: el.url.value.trim() }); };
   el.retry.onclick = () => { el.result.innerHTML = '<div class="empty">Running…</div>'; send("retry"); };
-  el.del.onclick = () => { if (confirm("Delete the sandbox?")) { send("delete_sandbox", { name: "" }); lastSeq = lastSeq; } };
+  el.del.onclick = () => { if (confirm("Delete the sandbox?")) { send("delete_sandbox", { name: "" }); } };
   el.strict.onclick = () => send("apply_preset", { preset: "strict" });
   el.research.onclick = () => send("apply_preset", { preset: "research" });
   el.apply.onclick = () => { send("apply_policy", { yaml: el.policy.value }); policyDirty = false; };

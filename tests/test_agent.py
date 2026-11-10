@@ -68,3 +68,52 @@ def test_policy_block_is_never_retried(monkeypatch):
     monkeypatch.setattr(agent, "http", fake_http)
     with pytest.raises(agent.PolicyBlocked):
         agent.chat([], "m", "k")
+
+
+def test_tool_call_arguments_tolerate_objects_and_garbage():
+    def call(arguments):
+        return agent.tool_calls_from({"tool_calls": [{"id": "1", "function": {"name": "fetch_url", "arguments": arguments}}]})[0]["args"]
+
+    assert call('{"url": "https://a.example/"}') == {"url": "https://a.example/"}
+    assert call({"url": "https://a.example/"}) == {"url": "https://a.example/"}  # already an object
+    assert call("[1, 2]") == {} and call("null") == {} and call("{broken") == {} and call(None) == {}
+
+
+def test_host_ignores_userinfo_and_port():
+    assert agent._host("https://user:pw@En.Wikipedia.org:8443/wiki/X") == "en.wikipedia.org"
+    assert agent._host("not a url") == "not a url"
+
+
+def test_parallel_tool_calls_keep_history_valid(monkeypatch, tmp_path, capsys):
+    """The agent runs one tool per turn, so the assistant turn it stores must carry exactly one tool_call
+    (an unanswered tool_call id makes the next request fail with HTTP 400). Non-string content must not crash."""
+    def tc(i, name, args):
+        return {"id": f"c{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+    replies = iter([
+        {"content": "", "tool_calls": [tc(1, "fetch_url", {"url": "https://a.example/"}),
+                                       tc(2, "write_file", {"path": "summary.md", "content": "early"})]},
+        {"content": "", "tool_calls": [tc(3, "write_file", {"path": "summary.md", "content": 123})]},
+        {"content": "", "tool_calls": [tc(4, "write_file", {"path": "summary.md", "content": "- a sandbox"})]},
+        {"content": "done"},
+    ])
+    seen = []
+
+    def fake_chat(messages, model, key, **kw):
+        seen.append(json.loads(json.dumps(messages)))
+        return next(replies)
+
+    monkeypatch.setattr(agent, "chat", fake_chat)
+    monkeypatch.setattr(agent, "http", lambda url, **kw: (200, "<p>page text</p>"))
+    monkeypatch.setattr(agent, "WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openshell:resolve:env:X")
+    monkeypatch.setattr(agent.sys, "argv", ["agent.py", "--task=-starts with a dash", "--url=https://a.example/"])
+
+    assert agent.main() == 0
+    assert (tmp_path / "summary.md").read_text() == "- a sandbox"
+    for messages in seen:
+        ids = [c["id"] for m in messages if m["role"] == "assistant" for c in m.get("tool_calls", [])]
+        answered = [m["tool_call_id"] for m in messages if m["role"] == "tool"]
+        assert ids == answered
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[0]["task"] == "-starts with a dash" and events[-1]["status"] == "ok"

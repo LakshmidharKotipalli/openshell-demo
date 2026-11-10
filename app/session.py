@@ -44,7 +44,8 @@ class Session:
         self.seen_denials: dict[str, parsing.Denial] = {}
         self.lock = asyncio.Lock()
         self.last_activity = time.monotonic()
-        self.result_text = ""
+        self.last_result: dict | None = None  # re-sent to clients that connect after the run
+        self._replay_policy: str | None = None  # last policy YAML played from the recording
         self._segments: dict[str, list[list[dict]]] = {}
         self._played: dict[str, int] = {}
         if replay:
@@ -80,6 +81,8 @@ class Session:
         await self.send(ws, self.state_msg())
         # Backlog is replayed when the client sends {"type":"hello","last_seq":N} (see main.py).
         await self.send_policy(ws)
+        if self.last_result:
+            await self.send(ws, self.last_result)
 
     # ---- command dispatch ------------------------------------------------
     async def handle(self, ws: WebSocket, msg: Any) -> None:
@@ -113,6 +116,7 @@ class Session:
                 await (self._play("allow_host") if self.replay else self.allow_host(msg.host, msg.port, msg.binary))
             elif t == "delete_sandbox":
                 await self.delete_sandbox(msg.name)
+        self.last_activity = time.monotonic()  # idle TTL counts from the end of a long run, not its start
 
     # ---- sandbox lifecycle -----------------------------------------------
     async def ensure_sandbox(self) -> str:
@@ -126,7 +130,13 @@ class Session:
         t0 = time.monotonic()
         await self.client.create_sandbox(name, image=IMAGE, policy_path=str(PRESETS["strict"]), providers=[PROVIDER])
         self.sandbox = name  # from here on cleanup knows about it
-        await self.client.upload(name, str(ROOT / "agent" / "agent.py"))
+        try:
+            await self.client.upload(name, str(ROOT / "agent" / "agent.py"))
+        except OpenShellError:
+            # A sandbox without agent.py can never run a task; do not keep it as the session sandbox.
+            self.sandbox = None
+            await self.client.delete_sandbox(name)
+            raise
         self.preset = "strict"
         await self.emit("sandbox_ready", name=name, seconds=round(time.monotonic() - t0, 1))
         await self.set_status("idle")
@@ -137,6 +147,8 @@ class Session:
         target = name or self.sandbox
         if not target:
             return
+        if not target.startswith(NAME_PREFIX):  # never touch sandboxes this app did not create
+            raise ValueError(f"refusing to delete '{target}': not a demo sandbox ({NAME_PREFIX}*)")
         if not self.replay:
             await self.client.delete_sandbox(target)
         if target == self.sandbox:
@@ -144,9 +156,9 @@ class Session:
             self.last_task = None
             self.seen_denials.clear()
             self.preset = "strict"
-        if target == self.sandbox or self.sandbox is None:
+            self._replay_policy = None
             self.log.clear()  # new session: reconnecting clients must not replay the old timeline
-            self.result_text = ""
+            self.last_result = None
             await self.broadcast({"type": "reset"})
         await self.emit("sandbox_deleted", name=target)
         await self.set_status("idle")
@@ -176,8 +188,12 @@ class Session:
         while True:
             await asyncio.sleep(30)
             if self.sandbox and not self.lock.locked() and time.monotonic() - self.last_activity > IDLE_TTL:
-                await self.emit("info", message=f"idle > {IDLE_TTL}s: deleting sandbox")
-                await self.delete_sandbox()
+                async with self.lock:  # a command arriving mid-delete gets "busy" instead of a dying sandbox
+                    try:
+                        await self.emit("info", message=f"idle > {IDLE_TTL}s: deleting sandbox")
+                        await self.delete_sandbox()
+                    except (OpenShellError, ValueError) as e:  # keep the reaper alive; retry next tick
+                        await self.emit("error", message=f"idle cleanup failed: {e}")
 
     # ---- running the agent -----------------------------------------------
     async def run_agent(self) -> None:
@@ -195,16 +211,22 @@ class Session:
         stop = asyncio.Event()
         watcher = asyncio.create_task(self._watch_denials(name, start, seen, stop))
         rc, agent_final, agent_err, denied_host = None, None, "", None
-        argv = ["python3", "agent.py", "--task", task["task"], "--url", task["url"], "--model", MODEL]
+        # --opt=value form: a task that starts with "-" must not be read as an option by argparse.
+        argv = ["python3", "agent.py", f"--task={task['task']}", f"--url={task['url']}", f"--model={MODEL}"]
         if os.environ.get("AGENT_SELFTEST"):  # dev/CI: skip the LLM, exercise fetch + policy only
             argv.append("--selftest")
+        env = {}
+        if os.environ.get("AGENT_MAX_STEPS", "").isdigit():  # the agent reads it inside the sandbox
+            env["AGENT_MAX_STEPS"] = os.environ["AGENT_MAX_STEPS"]
         try:
-            async for tag, line in self.client.exec_stream(name, argv, timeout=RUN_TIMEOUT):
+            async for tag, line in self.client.exec_stream(name, argv, timeout=RUN_TIMEOUT, env=env):
                 if tag == "stdout":
                     obj = parsing.parse_agent_line(line)
                     if not obj:
                         continue
-                    typ = obj.pop("type")
+                    typ = str(obj.pop("type"))
+                    for reserved in ("seq", "kind"):  # sandbox output must not overwrite the event envelope
+                        obj.pop(reserved, None)
                     if typ == "final":
                         agent_final = obj
                     elif typ == "policy_denied":
@@ -230,8 +252,8 @@ class Session:
             out_file = agent_final.get("file") or "summary.md"
             res = await self.client.exec_capture(name, ["cat", f"{WORKSPACE}/{out_file}"], timeout=20)
             text = res.stdout if res.returncode == 0 else (agent_final.get("summary") or "")
-            await self.broadcast({"type": "result", "text": text, "file": out_file, "summary": agent_final.get("summary", "")})
-            self.result_text = text
+            self.last_result = {"type": "result", "text": text, "file": out_file, "summary": agent_final.get("summary", "")}
+            await self.broadcast(self.last_result)
             await self.emit("done", message="Task completed", file=out_file)
             await self.set_status("done")
         else:
@@ -271,8 +293,11 @@ class Session:
 
     # ---- policy ----------------------------------------------------------
     async def current_policy(self) -> tuple[str, dict]:
+        if self.replay and self._replay_policy is not None:
+            return self._replay_policy, {}
         if self.replay or not self.sandbox:
-            doc = parsing.load_policy_file(str(PRESETS[self.preset]))
+            # preset can be "custom" here only in replay (recorded state); there is no file for it.
+            doc = parsing.load_policy_file(str(PRESETS.get(self.preset, PRESETS["strict"])))
             return parsing.dump_yaml(doc), {}
         base, meta = await self.client.policy_base(self.sandbox)
         return parsing.dump_yaml(base), meta
@@ -321,12 +346,11 @@ class Session:
             raise ValueError(f"invalid YAML: {e}") from e
         if not isinstance(doc, dict):
             raise ValueError("policy must be a YAML mapping")
-        name = await self.ensure_sandbox()
+        await self.ensure_sandbox()
         secs = await self._apply(doc, label=label)
         self.preset = "custom"
         await self.set_status(self.status)
         await self.broadcast_policy(secs)
-        _ = name
 
     async def allow_host(self, host: str, port: int, binary: str) -> None:
         if not self.sandbox:
@@ -373,10 +397,15 @@ class Session:
                     self.sandbox = m.get("sandbox", self.sandbox)
                     self.preset = m.get("preset", self.preset)
                     m = self.state_msg()
+                elif m.get("type") == "policy":
+                    self._replay_policy = m.get("yaml")
+                elif m.get("type") == "result":
+                    self.last_result = m
                 await self.broadcast(m)
 
     async def _replay_preset(self, preset: str) -> None:
         self.preset = preset
+        self._replay_policy = None  # show the preset file, not the recorded policy
         await self.emit("policy_applied", label=f"preset:{preset}", rule=None, seconds=0.0)
         await self.broadcast_policy(0.0)
         await self.broadcast(self.state_msg())

@@ -66,3 +66,35 @@ def test_opener_has_no_file_or_ftp_handlers():
 def test_http_urls_pass_validation():
     agent.check_url("https://en.wikipedia.org/wiki/Sandbox_(computer_security)")
     agent.check_url("http://example.com/")
+
+
+# ---- WebSocket robustness -----------------------------------------------------------------------
+LOCAL = {"host": "127.0.0.1:8000", "origin": "http://127.0.0.1:8000"}
+
+
+def _until(ws, type_):
+    while True:
+        m = ws.receive_json()
+        if m["type"] == type_:
+            return m
+
+
+def test_ws_bad_frames_get_an_error_not_a_dropped_connection():
+    c = TestClient(app, base_url="http://127.0.0.1:8000")
+    with c.websocket_connect("/ws", headers=LOCAL) as ws:
+        ws.send_text("this is not json")
+        assert "bad message" in _until(ws, "error")["message"]
+        ws.send_bytes(b"\x00\x01")
+        assert "bad message" in _until(ws, "error")["message"]
+        ws.send_json({"type": "hello", "last_seq": -5})
+        assert "bad message" in _until(ws, "error")["message"]
+        ws.send_json({"type": "get_policy", "id": "p"})  # still alive
+        assert _until(ws, "ack")["ref"] == "p"
+
+
+def test_ws_client_ahead_of_the_log_is_reset():
+    # After a server restart the browser still holds its old last_seq and would drop every new event.
+    c = TestClient(app, base_url="http://127.0.0.1:8000")
+    with c.websocket_connect("/ws", headers=LOCAL) as ws:
+        ws.send_json({"type": "hello", "last_seq": 10_000})
+        assert _until(ws, "reset") == {"type": "reset"}

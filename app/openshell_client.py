@@ -21,6 +21,7 @@ from . import parsing
 OPENSHELL_BIN = os.environ.get("OPENSHELL_BIN", "openshell")
 DEMO_LABEL = "app=osc-demo"
 NAME_PREFIX = "osc-demo-"
+STREAM_LINE_LIMIT = 1024 * 1024  # max length of one exec output line (asyncio's default is 64 KiB)
 
 
 class OpenShellError(RuntimeError):
@@ -177,16 +178,22 @@ class OpenShellClient:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=STREAM_LINE_LIMIT,
         )
         q: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
 
         async def pump(stream: asyncio.StreamReader, tag: str) -> None:
-            while True:
-                raw = await stream.readline()
-                if not raw:
-                    break
-                await q.put((tag, self._scrub.scrub(raw.decode("utf-8", "replace").rstrip("\n"))))
-            await q.put(None)
+            try:
+                while True:
+                    try:
+                        raw = await stream.readline()
+                    except ValueError:  # a line longer than STREAM_LINE_LIMIT: drop it, keep streaming
+                        continue
+                    if not raw:
+                        break
+                    await q.put((tag, self._scrub.scrub(raw.decode("utf-8", "replace").rstrip("\n"))))
+            finally:
+                await q.put(None)  # always signal end-of-stream, or the consumer waits for the full timeout
 
         tasks = [asyncio.create_task(pump(proc.stdout, "stdout")), asyncio.create_task(pump(proc.stderr, "stderr"))]
         done = 0

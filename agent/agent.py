@@ -28,6 +28,7 @@ LLM_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip(
 WORKSPACE = os.environ.get("AGENT_WORKSPACE", "/sandbox/workspace")
 MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "0"))  # 0 = no limit on tries
 FETCH_LIMIT = 8000
+MAX_BODY = 2_000_000  # bytes read from any HTTP response; a huge page must not exhaust sandbox memory
 
 TOOLS = [
     {"type": "function", "function": {
@@ -56,8 +57,10 @@ class PolicyBlocked(Exception):
 
 
 def _host(url: str) -> str:
-    m = re.match(r"^[a-z]+://([^/:]+)", url, re.I)
-    return m.group(1).lower() if m else url
+    try:
+        return urllib.parse.urlsplit(url.strip()).hostname or url  # hostname drops user:pass@ and :port
+    except ValueError:
+        return url
 
 
 def _build_opener() -> urllib.request.OpenerDirector:
@@ -86,9 +89,9 @@ def http(url: str, *, data: bytes | None = None, headers: dict | None = None, ti
     req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
         with _OPENER.open(req, timeout=timeout) as r:
-            return r.status, r.read().decode("utf-8", "replace")
+            return r.status, r.read(MAX_BODY).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")
+        body = e.read(MAX_BODY).decode("utf-8", "replace")
         if e.code == 403 and re.search(r"policy|denied|openshell", body, re.I):
             raise PolicyBlocked(_host(url), f"HTTP 403 from sandbox policy: {body[:200]}")
         return e.code, body
@@ -172,10 +175,14 @@ def tool_calls_from(msg: dict) -> list[dict]:
     """Native tool_calls first; fall back to JSON-in-text (free models are flaky at tool calling)."""
     calls = []
     for tc in msg.get("tool_calls") or []:
-        fn = tc.get("function", {})
-        try:
-            args = json.loads(fn.get("arguments") or "{}")
-        except ValueError:
+        fn = tc.get("function") or {}
+        args = fn.get("arguments") or {}
+        if isinstance(args, str):  # the API sends a JSON string; some models send an object or garbage
+            try:
+                args = json.loads(args)
+            except ValueError:
+                args = {}
+        if not isinstance(args, dict):
             args = {}
         calls.append({"id": tc.get("id", "call"), "name": fn.get("name"), "args": args, "native": True})
     if calls:
@@ -268,10 +275,12 @@ def main() -> int:
                     continue
                 emit("final", status="ok", summary=(msg.get("content") or "").strip(), file=a.out)
                 return 0
+            # Only the first call is run, so only that one goes into the history: the API rejects (HTTP 400)
+            # an assistant turn whose tool_calls are not all answered by a tool message.
             messages.append({"role": "assistant", "content": msg.get("content") or "",
-                             **({"tool_calls": msg["tool_calls"]} if calls[0]["native"] else {})})
+                             **({"tool_calls": msg["tool_calls"][:1]} if calls[0]["native"] else {})})
             for c in calls[:1]:  # one tool per turn keeps the timeline readable
-                emit("tool_call", step=step, tool=c["name"], args={k: (v if k != "content" else f"<{len(v)} chars>") for k, v in c["args"].items()})
+                emit("tool_call", step=step, tool=c["name"], args={k: (v if k != "content" else f"<{len(str(v))} chars>") for k, v in c["args"].items()})
                 try:
                     result = run_tool(c["name"], c["args"])
                     ok = True

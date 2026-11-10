@@ -21,6 +21,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 REPLAY = os.environ.get("REPLAY", "") not in ("", "0", "false", "False")
 client = OpenShellClient()
 session = Session(client, replay=REPLAY)
+_tasks: set[asyncio.Task] = set()  # strong refs: the event loop only keeps weak ones to running tasks
 
 
 @asynccontextmanager
@@ -84,7 +85,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
     await session.on_connect(ws, 0)
     try:
         while True:
-            raw = await ws.receive_json()
+            try:
+                raw = await ws.receive_json()
+            except (ValueError, KeyError):  # not JSON, or a binary frame
+                await session.send(ws, {"type": "error", "ref": "", "message": "bad message: expected a JSON text frame"})
+                continue
             ref = raw.get("id", "") if isinstance(raw, dict) else ""
             try:
                 msg = client_message_adapter.validate_python(raw)
@@ -92,10 +97,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 await ws.send_json({"type": "error", "ref": ref, "message": "bad message: " + e.errors()[0]["msg"]})
                 continue
             if msg.type == "hello":  # resume: replay events after last_seq (on_connect sent none yet)
-                for ev in session.log[msg.last_seq:]:
+                last_seq = msg.last_seq
+                if last_seq > len(session.log):
+                    # The client is ahead of this log (server restarted or session reset while it was away):
+                    # it would silently drop every new event as "already seen". Start it over.
+                    await session.send(ws, {"type": "reset"})
+                    last_seq = 0
+                for ev in session.log[last_seq:]:
                     await session.send(ws, ev)
                 continue
-            asyncio.create_task(_run(ws, msg, ref))
+            task = asyncio.create_task(_run(ws, msg, ref))
+            _tasks.add(task)
+            task.add_done_callback(_tasks.discard)
     except WebSocketDisconnect:
         pass
     finally:

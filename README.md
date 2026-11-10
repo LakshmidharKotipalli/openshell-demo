@@ -39,7 +39,8 @@ OpenShell releases weekly (Tuesdays). **Do not upgrade before a demo**; the inst
 | `REPLAY=1` | optional | Replay a recorded run instead of using a live sandbox. |
 | `PORT` | optional (`make run PORT=8080`) | Web port, default 8000. |
 | `RUN_TIMEOUT`, `IDLE_TTL` | optional | Wall-clock safety net for one agent run (900s; `0` = none), idle sandbox TTL (1800s). |
-| `AGENT_MAX_STEPS` | optional | Cap on agent steps. Default `0` = **no limit on tries**: the agent keeps going (and retries transient model errors) until it finishes. |
+| `AGENT_MAX_STEPS` | optional | Cap on agent steps, forwarded into the sandbox on each run. Default `0` = **no limit on tries**: the agent keeps going (and retries transient model errors) until it finishes. |
+| `PROVIDER_NAME`, `AGENT_IMAGE`, `OPENSHELL_BIN` | optional | Provider name (`openrouter-agent`), sandbox image (`python:3.12-slim`), CLI path (`openshell`). The first two are also read by `make setup` / `make preflight`. Allow rules assume the interpreter is `/usr/local/bin/python3.12`. |
 | `AGENT_SELFTEST=1` | dev/CI | Agent skips the LLM (fetch + file write only). |
 
 ## One-time setup
@@ -139,7 +140,7 @@ One sandbox per console session (`osc-demo-<id>`, label `app=osc-demo`), created
   Homebrew `gateway.toml` to `~/.config/openshell/` and sets `supervisor_network_mode = "bridge"`. (A user config
   *replaces* the Homebrew one, so a minimal hand-written file breaks the gateway.)
 - Profile commands are `openshell profile …` (the example profile's header says `provider profile`). `profile import` fails if the
-  profile exists, so setup uses `profile update` as a fallback.
+  profile exists (and `profile update` needs a resource_version), so setup deletes the provider and profile and re-imports.
 - No `policy validate` command; policies are linted locally (`app/parsing.lint_policy`) and validated for real by the gateway
   on `policy set` (unknown fields are rejected).
 - A sandbox with **zero** network rules has no proxy: connections fail with `EACCES` and **no denial is logged**.
@@ -163,7 +164,8 @@ One sandbox per console session (`osc-demo-<id>`, label `app=osc-demo`), created
 ## Tests
 
 `make test` runs pytest against output captured from a real v0.1.7 gateway (`tests/fixtures/`): log parsing (real denial
-lines), policy rule generation/merge, adapter argv/timeouts/secret scrubbing (fake CLI). `make e2e` drives the full
+lines), policy rule generation/merge, adapter argv/timeouts/secret scrubbing (fake CLI), session behaviour (fake adapter),
+the agent's retry and tool-call handling, and the security checks above. `make e2e` drives the full
 denial → allow → retry → result flow over the app's WebSocket against live OpenShell.
 
 ## Repository layout

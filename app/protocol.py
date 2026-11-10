@@ -5,6 +5,7 @@
   {"type": "policy", "yaml": "...", "preset": ..., "version": n}
   {"type": "result", "text": "...", "file": "..."}
   {"type": "sandboxes", "items": [...]}
+  {"type": "reset"}                                             session was reset: clear the timeline, last_seq = 0
   {"type": "ack" | "error", "ref": "<client msg id>", "message": "..."}
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ class _Base(BaseModel):
 
 class Hello(_Base):
     type: Literal["hello"]
-    last_seq: int = 0
+    last_seq: int = Field(default=0, ge=0)
 
 
 class RunTask(_Base):

@@ -1,7 +1,6 @@
 """Adapter tests: argv construction, JSON parsing of real `sandbox list -o json`, secret scrubbing
 and timeouts, using a fake `openshell` executable (no gateway needed)."""
 import asyncio
-import os
 import stat
 from pathlib import Path
 

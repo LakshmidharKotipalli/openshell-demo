@@ -22,8 +22,8 @@ NET_DENIED = re.compile(
     r"^NET:OPEN\s+\[(?P<sev>[A-Z]+)\]\s+DENIED\s+(?P<binary>\S+?)\((?P<pid>\d+)\)\s+->\s+"
     r"(?P<host>[^\s:]+):(?P<port>\d+)(?:\s+\[reason:(?P<reason>[^\]]+)\])?"
 )
-# L7 denials: "HTTP:<METHOD> [SEV] DENIED <METHOD> <url> [policy:...]" (shape from the docs;
-# confirmed/adjusted against a live capture in tests — see test_http_denied_*).
+# L7 denials: "HTTP:<METHOD> [SEV] DENIED <METHOD> <url> [policy:...]". Shape taken from the docs only:
+# the captured fixtures contain L4 denials, so test_http_denied_* checks the documented shape, not a capture.
 HTTP_DENIED = re.compile(
     r"^HTTP:(?P<method>[A-Z_]+)\s+\[(?P<sev>[A-Z]+)\]\s+DENIED\s+(?P<m2>[A-Z_]+)\s+"
     r"(?P<url>\S+)"
@@ -83,7 +83,7 @@ def parse_denial_line(line: str) -> Denial | None:
             return Denial(
                 host=u.hostname.lower(),
                 port=u.port or (443 if u.scheme == "https" else 80),
-                binary="",  # L7 line doesn't always carry the binary; filled from nearby NET line
+                binary="",  # the L7 line carries no binary; allow_host falls back to the agent interpreter
                 scope="http",
                 method=m["method"],
                 path=u.path or "/",
@@ -196,13 +196,26 @@ def lint_policy(doc: dict) -> list[str]:
             problems.append(f"unknown top-level field: {k}")
     if doc.get("version") != 1:
         problems.append("version must be 1")
-    for name, rule in (doc.get("network_policies") or {}).items():
+    nets = doc.get("network_policies") or {}
+    if not isinstance(nets, dict):
+        return problems + ["network_policies must be a mapping of rule name -> rule"]
+    for name, rule in nets.items():
         if str(name).startswith("_provider_"):
             problems.append(f"rule key {name!r} may not start with _provider_")
-        for b in rule.get("binaries", []):
+        if not isinstance(rule, dict):
+            problems.append(f"{name}: rule must be a mapping")
+            continue
+        binaries, endpoints = rule.get("binaries") or [], rule.get("endpoints") or []
+        if not isinstance(binaries, list) or not isinstance(endpoints, list):
+            problems.append(f"{name}: binaries and endpoints must be lists")
+            continue
+        for b in binaries:
             if not isinstance(b, dict) or "path" not in b:
                 problems.append(f"{name}: binaries must be objects with `path`")
-        for e in rule.get("endpoints", []):
+        for e in endpoints:
+            if not isinstance(e, dict):
+                problems.append(f"{name}: endpoints must be objects")
+                continue
             if "host" not in e:
                 problems.append(f"{name}: endpoint missing host")
             if "port" not in e and "ports" not in e:

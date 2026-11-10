@@ -2,3 +2,5 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 pyyaml>=6
 pytest>=8
+httpx>=0.27        # starlette.testclient (tests/test_security.py)
+websockets>=12     # scripts/e2e.py (make e2e / make record)

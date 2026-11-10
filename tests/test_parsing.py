@@ -122,3 +122,27 @@ def test_scrubber_masks_secret():
     s = p.SecretScrubber(["sk-or-v1-abcdefghijklmnop"])
     assert s.scrub("Authorization: Bearer sk-or-v1-abcdefghijklmnop") == "Authorization: Bearer ***"
     assert p.SecretScrubber([""]).scrub("keep") == "keep"
+
+
+def test_http_denied_documented_shape():
+    # L7 shape comes from the OpenShell docs (no live capture); the line carries no binary.
+    line = "[2.5] [sandbox] [OCSF ] [ocsf] HTTP:POST [MED] DENIED POST https://En.Wikipedia.org/w/api.php?x=1 [policy:research_hosts]"
+    d = p.parse_denial_line(line)
+    assert (d.host, d.port, d.scope, d.method, d.path, d.binary) == ("en.wikipedia.org", 443, "http", "POST", "/w/api.php", "")
+    assert p.parse_denial_line(line.replace("https://En.Wikipedia.org", "http://a.example:8080")).port == 8080
+
+
+@pytest.mark.parametrize("nets", [
+    ["not", "a", "mapping"],
+    {"r": 1},
+    {"r": {"endpoints": "example.com"}},
+    {"r": {"endpoints": ["example.com"]}},
+    {"r": {"binaries": {"path": "/x"}}},
+])
+def test_lint_reports_malformed_shapes_instead_of_crashing(nets):
+    assert p.lint_policy({"version": 1, "network_policies": nets})
+
+
+def test_lint_accepts_empty_or_missing_rule_lists():
+    assert p.lint_policy({"version": 1, "network_policies": {"r": {"endpoints": None, "binaries": None}}}) == []
+    assert p.lint_policy({"version": 1, "network_policies": None}) == []
