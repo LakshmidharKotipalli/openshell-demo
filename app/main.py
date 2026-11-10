@@ -6,6 +6,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -53,8 +54,32 @@ async def health() -> dict:
             "provider": provider_ok, "provider_name": PROVIDER, "model": MODEL}
 
 
+LOCAL_HOSTNAMES = {"127.0.0.1", "localhost", "::1"}
+
+
+def ws_origin_allowed(headers) -> bool:
+    """Block cross-site WebSocket hijacking and DNS rebinding.
+
+    Any web page in the user's browser can open ws://127.0.0.1:<port>/ws, and that socket can run tasks and
+    widen the sandbox policy. Browsers always send an Origin header on WebSocket handshakes, so:
+      * the Host header must be a loopback name (defeats DNS rebinding), and
+      * if an Origin is present it must be this very server (same scheme-less netloc, loopback host).
+    Non-browser clients (scripts/e2e.py) send no Origin and are not a cross-site risk."""
+    host_hdr = headers.get("host", "")
+    if (urlsplit("//" + host_hdr).hostname or "") not in LOCAL_HOSTNAMES:
+        return False
+    origin = headers.get("origin")
+    if origin is None:
+        return True
+    o = urlsplit(origin)
+    return o.scheme in ("http", "https") and (o.hostname or "") in LOCAL_HOSTNAMES and o.netloc == host_hdr
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    if not ws_origin_allowed(ws.headers):
+        await ws.close(code=1008)  # policy violation; rejected before the handshake completes
+        return
     await ws.accept()
     await session.on_connect(ws, 0)
     try:

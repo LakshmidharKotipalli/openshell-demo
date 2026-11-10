@@ -21,6 +21,7 @@ import socket
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 LLM_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/") + "/chat/completions"
@@ -59,10 +60,32 @@ def _host(url: str) -> str:
     return m.group(1).lower() if m else url
 
 
+def _build_opener() -> urllib.request.OpenerDirector:
+    """An opener that can ONLY speak http/https. The default urlopen also registers FileHandler and
+    FTPHandler, so a model-chosen file:///etc/passwd or ftp:// URL (or a redirect to one) would bypass the
+    workspace restriction of read_file. Landlock still bounds the damage, but the tool must not offer it."""
+    o = urllib.request.OpenerDirector()
+    for h in (urllib.request.ProxyHandler(), urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(),
+              urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPRedirectHandler(),
+              urllib.request.HTTPErrorProcessor(), urllib.request.UnknownHandler()):
+        o.add_handler(h)
+    return o
+
+
+_OPENER = _build_opener()
+
+
+def check_url(url: str) -> None:
+    u = urllib.parse.urlsplit(url.strip())
+    if u.scheme.lower() not in ("http", "https") or not u.hostname:
+        raise ValueError(f"only absolute http(s) URLs are allowed, got: {url[:80]!r}")
+
+
 def http(url: str, *, data: bytes | None = None, headers: dict | None = None, timeout: int = 20) -> tuple[int, str]:
+    check_url(url)
     req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _OPENER.open(req, timeout=timeout) as r:
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")

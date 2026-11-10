@@ -148,6 +148,18 @@ One sandbox per console session (`osc-demo-<id>`, label `app=osc-demo`), created
 - OpenShell can also draft allow rules itself (`openshell rule get <sb> --status pending`); this app uses explicit `policy set`.
 - Agent-side file denials (Landlock `EACCES`) are not in the gateway log stream; the agent reports them (`agent.fs_denied`).
 
+## Security notes
+
+- **WebSocket origin check.** The console has no login, so any web page in your browser could otherwise open
+  `ws://127.0.0.1:8000/ws` and drive it (run tasks, widen the sandbox policy). `app/main.py` rejects the handshake unless
+  the `Host` header is a loopback name (blocks DNS rebinding) and any `Origin` header is this same server. Scripts such as
+  `scripts/e2e.py` send no `Origin` and still work. The app binds to `127.0.0.1` only; do not expose it on a network
+  without adding real authentication.
+- **`fetch_url` is http/https only.** The agent's HTTP opener has no `file://`, `ftp://` or `data:` handlers, so a
+  model-chosen URL (or redirect) cannot read local files around the workspace restriction. Landlock still bounds the
+  sandbox either way.
+- Both are covered by `tests/test_security.py`.
+
 ## Tests
 
 `make test` runs pytest against output captured from a real v0.1.7 gateway (`tests/fixtures/`): log parsing (real denial
