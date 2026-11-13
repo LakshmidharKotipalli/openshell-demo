@@ -98,3 +98,9 @@ def test_ws_client_ahead_of_the_log_is_reset():
     with c.websocket_connect("/ws", headers=LOCAL) as ws:
         ws.send_json({"type": "hello", "last_seq": 10_000})
         assert _until(ws, "reset") == {"type": "reset"}
+
+
+def test_ui_assets_are_revalidated_so_page_and_script_cannot_go_out_of_sync():
+    c = TestClient(app, base_url="http://127.0.0.1:8000")
+    for path in ("/", "/static/app.js", "/static/style.css"):
+        assert c.get(path).headers["cache-control"] == "no-cache"

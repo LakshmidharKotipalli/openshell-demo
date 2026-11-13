@@ -40,6 +40,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Sandboxed Agent Console", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def no_stale_ui(request, call_next):
+    """Page and script ship together; a browser holding an old index.html with a new app.js (or vice versa)
+    breaks the UI. no-cache makes it revalidate (cheap 304) on every load."""
+    resp = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 @app.get("/api/health")
 async def health() -> dict:
     if REPLAY:
