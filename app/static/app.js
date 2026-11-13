@@ -1,7 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const el = {
-    task: $("task"), url: $("url"), run: $("btn-run"), retry: $("btn-retry"), del: $("btn-del"),
+    task: $("task"), url: $("url"), run: $("btn-run"), stop: $("btn-stop"), retry: $("btn-retry"), del: $("btn-del"),
     sb: $("sb-name"), dot: $("status-dot"), stext: $("status-text"), tl: $("timeline"),
     policy: $("policy"), polMeta: $("pol-meta"), applyTime: $("apply-time"), apply: $("btn-apply"),
     strict: $("btn-strict"), research: $("btn-research"), result: $("result"), banner: $("banner"),
@@ -40,7 +40,7 @@
     el.stext.textContent = s.status + (s.mode === "replay" ? " (replay)" : "");
     el.sb.textContent = s.sandbox ? "sandbox: " + s.sandbox : "no sandbox";
     const busy = s.status === "running" || s.status === "creating";
-    el.run.disabled = busy; el.retry.disabled = busy || !s.can_retry; el.del.disabled = busy || !s.sandbox;
+    el.run.disabled = busy; el.stop.disabled = s.status !== "running"; el.retry.disabled = busy || !s.can_retry; el.del.disabled = busy || !s.sandbox;
     el.apply.disabled = busy; el.strict.disabled = busy; el.research.disabled = busy;
     el.strict.classList.toggle("active", s.preset === "strict");
     el.research.classList.toggle("active", s.preset === "research");
@@ -91,6 +91,8 @@
       case "policy_applied":
         markAllowed(ev);
         return addRow(ts, "✔", `Policy live in <b>${ev.seconds}s</b> (${esc(ev.label)})`, "ok");
+      case "stopped":
+        return addRow(ts, "⏹", esc(ev.message), "bad");
       case "done":
         return addRow(ts, "🏁", esc(ev.message), "ok");
       case "info":
@@ -187,6 +189,7 @@
 
   // ---------- wiring ----------
   el.run.onclick = () => { el.result.innerHTML = '<div class="empty">Running…</div>'; send("run_task", { task: el.task.value.trim(), url: el.url.value.trim() }); };
+  el.stop.onclick = () => { el.stop.disabled = true; send("stop"); };  /* kill switch: allowed while the agent runs */
   el.retry.onclick = () => { el.result.innerHTML = '<div class="empty">Running…</div>'; send("retry"); };
   el.del.onclick = () => { if (confirm("Delete the sandbox?")) { send("delete_sandbox", { name: "" }); } };
   el.strict.onclick = () => send("apply_preset", { preset: "strict" });

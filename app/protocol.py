@@ -39,6 +39,10 @@ class Retry(_Base):
     type: Literal["retry"]
 
 
+class Stop(_Base):
+    type: Literal["stop"]
+
+
 class ApplyPreset(_Base):
     type: Literal["apply_preset"]
     preset: Literal["strict", "research"]
@@ -70,7 +74,7 @@ class DeleteSandbox(_Base):
 
 
 ClientMessage = Annotated[
-    Union[Hello, RunTask, Retry, ApplyPreset, ApplyPolicy, AllowHost, GetPolicy, ListSandboxes, DeleteSandbox],
+    Union[Hello, RunTask, Retry, Stop, ApplyPreset, ApplyPolicy, AllowHost, GetPolicy, ListSandboxes, DeleteSandbox],
     Field(discriminator="type"),
 ]
 client_message_adapter: TypeAdapter = TypeAdapter(ClientMessage)

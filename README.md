@@ -40,6 +40,8 @@ OpenShell releases weekly (Tuesdays). **Do not upgrade before a demo**; the inst
 | `PORT` | optional (`make run PORT=8080`) | Web port, default 8000. |
 | `RUN_TIMEOUT`, `IDLE_TTL` | optional | Wall-clock safety net for one agent run (900s; `0` = none), idle sandbox TTL (1800s). |
 | `AGENT_MAX_STEPS` | optional | Cap on agent steps, forwarded into the sandbox on each run. Default `0` = **no limit on tries**: the agent keeps going (and retries transient model errors) until it finishes. |
+| `AGENT_LOOP_REPEAT` | optional | Loop guard inside the agent (default `4`, minimum `2`): the same tool call with identical arguments is refused on the 3rd attempt and the run ends as `stalled` on the 4th. A model that ignores 3 reminders to call a tool also ends as `stalled`. |
+| **Stop button** | UI | Kills a running agent at any moment (host stream cancelled, plus a `SIGKILL` of `agent.py` inside the sandbox). Status becomes `stopped`; Retry stays available. |
 | `PROVIDER_NAME`, `AGENT_IMAGE`, `OPENSHELL_BIN` | optional | Provider name (`openrouter-agent`), sandbox image (`python:3.12-slim`), CLI path (`openshell`). The first two are also read by `make setup` / `make preflight`. Allow rules assume the interpreter is `/usr/local/bin/python3.12`. |
 | `AGENT_SELFTEST=1` | dev/CI | Agent skips the LLM (fetch + file write only). |
 

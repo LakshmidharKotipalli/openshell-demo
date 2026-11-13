@@ -24,6 +24,25 @@ NAME_PREFIX = "osc-demo-"
 STREAM_LINE_LIMIT = 1024 * 1024  # max length of one exec output line (asyncio's default is 64 KiB)
 
 
+# Runs inside the sandbox (Linux /proc). Matches only processes whose argv[0..2] ends in agent.py, so neither
+# this snippet (argv[2] is the code itself) nor an unrelated process is hit. Prints how many it killed.
+_KILL_AGENT = r"""
+import os, signal
+me, n = os.getpid(), 0
+for p in os.listdir('/proc'):
+    if not p.isdigit() or int(p) == me:
+        continue
+    try:
+        argv = open('/proc/%s/cmdline' % p, 'rb').read().split(b'\0')[:3]
+        if any(a.endswith(b'agent.py') for a in argv):
+            os.kill(int(p), signal.SIGKILL)
+            n += 1
+    except OSError:
+        pass
+print(n)
+"""
+
+
 class OpenShellError(RuntimeError):
     def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
         super().__init__(message)
@@ -222,6 +241,15 @@ class OpenShellClient:
     async def exec_capture(self, name: str, argv: Sequence[str], *, timeout: float = 60) -> CmdResult:
         args = ["sandbox", "exec", "-n", name, "--no-tty", "--timeout", str(int(timeout)), "--", *argv]
         return await self._run(args, timeout=timeout + 10, check=False)
+
+    async def kill_agent(self, name: str) -> int:
+        """Best effort: SIGKILL any agent.py still running inside the sandbox. Dropping the host-side `exec`
+        connection is not guaranteed to end the remote process, and a looping agent keeps spending tokens."""
+        res = await self.exec_capture(name, ["python3", "-c", _KILL_AGENT], timeout=15)
+        try:
+            return int(res.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return 0
 
     # -- logs / denials ---------------------------------------------------
     async def sandbox_logs(self, name: str, *, n: int = 300, since: str | None = None) -> list[str]:

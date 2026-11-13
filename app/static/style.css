@@ -44,7 +44,7 @@ button.preset.active { border-color: var(--green); color: var(--green); }
 .statusline { margin-top: 10px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .dot.running, .dot.creating { background: var(--blue); animation: pulse 1s infinite; }
-.dot.done { background: var(--green); } .dot.blocked { background: var(--amber); } .dot.error { background: var(--red); }
+.dot.done { background: var(--green); } .dot.blocked { background: var(--amber); } .dot.error, .dot.stopped { background: var(--red); }
 @keyframes pulse { 50% { opacity: .35; } }
 .timeline { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 .empty { color: var(--muted); font-style: italic; padding: 8px 2px; }

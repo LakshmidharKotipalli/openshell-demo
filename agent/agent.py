@@ -9,7 +9,7 @@ Credentials: OPENROUTER_API_KEY in this process is an opaque placeholder injecte
 The real key lives in the gateway; the sandbox proxy substitutes it only on requests to the
 provider's approved endpoint. This script never sees (or prints) the real key.
 
-Exit codes: 0 ok, 3 blocked by sandbox policy, 1 other failure.
+Exit codes: 0 ok, 3 blocked by sandbox policy, 4 stalled (looping), 1 other failure.
 """
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ import urllib.request
 LLM_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/") + "/chat/completions"
 WORKSPACE = os.environ.get("AGENT_WORKSPACE", "/sandbox/workspace")
 MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "0"))  # 0 = no limit on tries
+LOOP_REPEAT = max(2, int(os.environ.get("AGENT_LOOP_REPEAT", "4")))  # same tool call this many times = stuck
+MAX_NUDGES = 3  # consecutive "call a tool" reminders the model may ignore before the run is declared stalled
 FETCH_LIMIT = 8000
 MAX_BODY = 2_000_000  # bytes read from any HTTP response; a huge page must not exhaust sandbox memory
 
@@ -247,6 +249,13 @@ def main() -> int:
     user = f"Task: {a.task}\nURL: {a.url}\nOutput file: {a.out}"
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     fetched = wrote = False
+    seen_calls: dict[str, int] = {}  # identical (tool, args) -> times requested
+    nudges = 0  # consecutive turns where the model ignored the instruction to call a tool
+
+    def stalled(why: str) -> int:
+        emit("final", status="stalled", summary=f"Stopped: the agent was going in circles ({why}). "
+                                                "Retry with a clearer task or a different URL.")
+        return 4
 
     try:
         step = 0
@@ -268,27 +277,36 @@ def main() -> int:
             emit("llm_response", step=step, tools=[c["name"] for c in calls],
                  text=(msg.get("content") or "")[:300])
             if not calls:
-                if a.url and not fetched:
+                if (a.url and not fetched) or not wrote:
+                    nudges += 1
+                    if nudges > MAX_NUDGES:  # the model keeps answering in prose instead of using the tools
+                        return stalled(f"ignored {MAX_NUDGES} reminders to call a tool")
                     messages.append({"role": "assistant", "content": msg.get("content") or ""})
-                    messages.append({"role": "user", "content": f"Call the fetch_url tool now with url={a.url}."})
-                    continue
-                if not wrote:
-                    messages.append({"role": "assistant", "content": msg.get("content") or ""})
-                    messages.append({"role": "user", "content": f"Now call write_file to save your summary to {a.out}."})
+                    messages.append({"role": "user", "content": f"Call the fetch_url tool now with url={a.url}."
+                                     if a.url and not fetched else f"Now call write_file to save your summary to {a.out}."})
                     continue
                 emit("final", status="ok", summary=(msg.get("content") or "").strip(), file=a.out)
                 return 0
+            nudges = 0
             # Only the first call is run, so only that one goes into the history: the API rejects (HTTP 400)
             # an assistant turn whose tool_calls are not all answered by a tool message.
             messages.append({"role": "assistant", "content": msg.get("content") or "",
                              **({"tool_calls": msg["tool_calls"][:1]} if calls[0]["native"] else {})})
             for c in calls[:1]:  # one tool per turn keeps the timeline readable
                 emit("tool_call", step=step, tool=c["name"], args={k: (v if k != "content" else f"<{len(str(v))} chars>") for k, v in c["args"].items()})
+                key = json.dumps([c["name"], c["args"]], sort_keys=True, default=str)
+                seen_calls[key] = repeats = seen_calls.get(key, 0) + 1
+                if repeats >= LOOP_REPEAT:  # it was warned below and did it anyway: stop burning tokens
+                    return stalled(f"{c['name']} called {repeats} times with identical arguments")
                 try:
-                    result = run_tool(c["name"], c["args"])
-                    ok = True
-                    fetched |= c["name"] == "fetch_url"
-                    wrote |= c["name"] == "write_file"
+                    if repeats == LOOP_REPEAT - 1:  # last chance: do not execute, tell the model it is repeating itself
+                        result, ok = (f"error: you already made this exact {c['name']} call {repeats - 1} times. Repeating it "
+                                      "will not change the result. Use what you have, call a different tool, or give your final answer."), False
+                    else:
+                        result = run_tool(c["name"], c["args"])
+                        ok = True
+                        fetched |= c["name"] == "fetch_url"
+                        wrote |= c["name"] == "write_file"
                 except PolicyBlocked as pb:
                     emit("policy_denied", step=step, tool=c["name"], host=pb.host, detail=pb.detail, url=c["args"].get("url", ""))
                     emit("final", status="blocked", summary=f"Blocked by sandbox network policy: {pb.host}")

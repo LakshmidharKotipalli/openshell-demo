@@ -129,3 +129,44 @@ def test_json_in_text_tool_calls_single_line_and_pretty_printed():
     # not tool calls: unknown tool, args not an object, broken JSON, plain prose with braces
     for text in ('{"tool": "rm_rf", "args": {}}', '{"tool": "fetch_url", "args": "x"}', '{"tool": "fetch_url", ', "use {curly} words"):
         assert agent.tool_calls_from({"content": text}) == []
+
+
+def _run_agent(monkeypatch, tmp_path, capsys, replies, http_body="<p>page</p>"):
+    it = iter(replies)
+    monkeypatch.setattr(agent, "chat", lambda *a, **k: next(it))
+    monkeypatch.setattr(agent, "http", lambda url, **kw: (200, http_body))
+    monkeypatch.setattr(agent, "WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openshell:resolve:env:X")
+    monkeypatch.setattr(agent.sys, "argv", ["agent.py", "--task=t", "--url=https://a.example/"])
+    rc = agent.main()
+    return rc, [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+
+
+def _tc(i, name, args):
+    return {"id": f"c{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+def test_repeating_the_same_tool_call_is_warned_then_stopped(monkeypatch, tmp_path, capsys):
+    same = lambda i: {"content": "", "tool_calls": [_tc(i, "fetch_url", {"url": "https://a.example/"})]}
+    rc, events = _run_agent(monkeypatch, tmp_path, capsys, (same(i) for i in range(100)))  # never runs out
+    results = [e for e in events if e["type"] == "tool_result"]
+    assert rc == 4 and events[-1]["status"] == "stalled"
+    assert [r["ok"] for r in results] == [True, True, False]  # 3rd call not executed, model told it is looping
+    assert "already made this exact" in results[-1]["preview"]
+
+
+def test_model_that_never_calls_tools_is_stopped(monkeypatch, tmp_path, capsys):
+    rc, events = _run_agent(monkeypatch, tmp_path, capsys, ({"content": "I think so."} for _ in range(100)))
+    assert rc == 4 and events[-1]["status"] == "stalled"
+    assert len([e for e in events if e["type"] == "llm_request"]) == agent.MAX_NUDGES + 1
+
+
+def test_varied_calls_and_one_recovery_are_not_flagged(monkeypatch, tmp_path, capsys):
+    replies = [
+        {"content": "let me think"},  # one nudge is fine and the counter resets afterwards
+        {"content": "", "tool_calls": [_tc(1, "fetch_url", {"url": "https://a.example/"})]},
+        {"content": "", "tool_calls": [_tc(2, "write_file", {"path": "summary.md", "content": "- ok"})]},
+        {"content": "done"},
+    ]
+    rc, events = _run_agent(monkeypatch, tmp_path, capsys, replies)
+    assert rc == 0 and events[-1]["status"] == "ok"

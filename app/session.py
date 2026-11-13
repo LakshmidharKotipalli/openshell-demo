@@ -48,6 +48,8 @@ class Session:
         self._replay_policy: str | None = None  # last policy YAML played from the recording
         self._segments: dict[str, list[list[dict]]] = {}
         self._played: dict[str, int] = {}
+        self._runner: asyncio.Task | None = None  # the cancellable part of a run; stop() cancels it
+        self._stop_requested = False
         if replay:
             self._load_recording()
 
@@ -74,7 +76,7 @@ class Session:
     def state_msg(self) -> dict:
         return {"type": "state", "status": self.status, "sandbox": self.sandbox, "preset": self.preset,
                 "mode": "replay" if self.replay else "live", "model": MODEL, "provider": PROVIDER,
-                "can_retry": self.last_task is not None and self.status in ("blocked", "error", "done")}
+                "can_retry": self.last_task is not None and self.status in ("blocked", "error", "done", "stopped")}
 
     async def on_connect(self, ws: WebSocket, last_seq: int = 0) -> None:
         # Snapshot only. The client joins the broadcast set in resume(), once it has the backlog.
@@ -110,17 +112,19 @@ class Session:
             return await self.send(ws, {"type": "sandboxes", "items": await self.list_sandboxes()})
         if t == "get_policy":
             return await self.send_policy(ws)
+        if t == "stop":  # must bypass the lock: the run being stopped is holding it
+            return await self.stop()
         if self.lock.locked():
             raise Busy("another operation is still running")
         async with self.lock:
             if t == "run_task":
                 self.last_task = {"task": msg.task, "url": msg.url}
                 self.seen_denials.clear()
-                await (self._play("run_task") if self.replay else self.run_agent())
+                await (self._play_stoppable("run_task") if self.replay else self.run_agent())
             elif t == "retry":
                 if not self.last_task:
                     raise ValueError("nothing to retry yet")
-                await (self._play("retry") if self.replay else self.run_agent())
+                await (self._play_stoppable("retry") if self.replay else self.run_agent())
             elif t == "apply_preset":
                 await (self._play("apply_preset", fallback=lambda: self._replay_preset(msg.preset))
                        if self.replay else self.apply_preset(msg.preset))
@@ -221,6 +225,7 @@ class Session:
             return
         task = self.last_task or {}
         start = time.time()
+        self._stop_requested = False
         await self.set_status("running")
         await self.emit("run_started", task=task["task"], url=task["url"], model=MODEL, preset=self.preset)
         seen: set[tuple] = set()
@@ -234,31 +239,42 @@ class Session:
         env = {}
         if os.environ.get("AGENT_MAX_STEPS", "").isdigit():  # the agent reads it inside the sandbox
             env["AGENT_MAX_STEPS"] = os.environ["AGENT_MAX_STEPS"]
+
+        async def consume() -> None:
+            nonlocal rc, agent_final, agent_err, denied_host
+            try:
+                async for tag, line in self.client.exec_stream(name, argv, timeout=RUN_TIMEOUT, env=env):
+                    if tag == "stdout":
+                        obj = parsing.parse_agent_line(line)
+                        if not obj:
+                            continue
+                        typ = str(obj.pop("type"))
+                        for reserved in ("seq", "kind"):  # sandbox output must not overwrite the event envelope
+                            obj.pop(reserved, None)
+                        if typ == "final":
+                            agent_final = obj
+                        elif typ == "policy_denied":
+                            denied_host = obj.get("host")
+                        elif typ == "error":
+                            agent_err = obj.get("message", "")
+                        await self.emit("agent." + typ, **obj)
+                    elif tag == "stderr" and line.strip():
+                        await self.emit("stderr", line=line[:300])
+                    elif tag == "exit":
+                        rc = int(line)
+            except OpenShellError as e:
+                await self.emit("error", message=str(e))
+
         try:
-            async for tag, line in self.client.exec_stream(name, argv, timeout=RUN_TIMEOUT, env=env):
-                if tag == "stdout":
-                    obj = parsing.parse_agent_line(line)
-                    if not obj:
-                        continue
-                    typ = str(obj.pop("type"))
-                    for reserved in ("seq", "kind"):  # sandbox output must not overwrite the event envelope
-                        obj.pop(reserved, None)
-                    if typ == "final":
-                        agent_final = obj
-                    elif typ == "policy_denied":
-                        denied_host = obj.get("host")
-                    elif typ == "error":
-                        agent_err = obj.get("message", "")
-                    await self.emit("agent." + typ, **obj)
-                elif tag == "stderr" and line.strip():
-                    await self.emit("stderr", line=line[:300])
-                elif tag == "exit":
-                    rc = int(line)
-        except OpenShellError as e:
-            await self.emit("error", message=str(e))
+            stopped = await self._cancellable(consume())
         finally:
             stop.set()
             await asyncio.gather(watcher, return_exceptions=True)
+        if stopped:
+            await self._kill_remote(name)
+            return await self._finish_stopped()
+        if rc == 124:
+            await self._kill_remote(name)  # the host gave up waiting; do not leave the agent running unseen
 
         if rc == 3 or denied_host:
             await self._ensure_denial_event(name, start, seen, denied_host)
@@ -273,9 +289,57 @@ class Session:
             await self.emit("done", message="Task completed", file=out_file)
             await self.set_status("done")
         else:
-            msg = agent_err or (agent_final or {}).get("summary") or f"agent exited with code {rc}"
+            msg = agent_err or (agent_final or {}).get("summary") or (
+                f"run exceeded the {RUN_TIMEOUT}s time limit (RUN_TIMEOUT) and was killed" if rc == 124
+                else f"agent exited with code {rc}")
             await self.emit("error", message=msg)
             await self.set_status("error")
+
+    # ---- stopping a run --------------------------------------------------
+    async def _cancellable(self, coro) -> bool:
+        """Run coro as a task that stop() can cancel. True if the run was stopped before it finished."""
+        if self._stop_requested:  # stop arrived before the runner existed
+            coro.close()
+            return True
+        self._runner = asyncio.create_task(coro)
+        try:
+            await self._runner
+            return False
+        except asyncio.CancelledError:
+            if not self._stop_requested:
+                raise  # this handler itself was cancelled (shutdown), not a user stop
+            return True
+        finally:
+            self._runner = None
+
+    async def stop(self) -> None:
+        """Kill switch: end the current agent run immediately, whatever the agent or model is doing."""
+        if self.status != "running":
+            msg = ("the sandbox is still being created; stop is available once the agent is running"
+                   if self.status == "creating" else "nothing is running")
+            return await self.emit("info", message=msg)
+        self._stop_requested = True
+        await self.emit("info", message="Stop requested: killing the agent…")
+        if self._runner:
+            self._runner.cancel()  # exec_stream's finally kills the host-side CLI process
+
+    async def _kill_remote(self, name: str) -> None:
+        try:
+            killed = await self.client.kill_agent(name)
+            await self.emit("info", message=f"agent process killed in sandbox ({killed} process{'es' if killed != 1 else ''})"
+                            if killed else "no agent process was left running in the sandbox")
+        except OpenShellError as e:  # the run is already abandoned; report it, do not fail the stop
+            await self.emit("error", message=f"could not confirm the agent process is gone: {e}")
+
+    async def _finish_stopped(self) -> None:
+        self._stop_requested = False
+        await self.emit("stopped", message="Run stopped by user")
+        await self.set_status("stopped")
+
+    async def _play_stoppable(self, cmd: str) -> None:
+        self._stop_requested = False
+        if await self._cancellable(self._play(cmd)):
+            await self._finish_stopped()
 
     async def _watch_denials(self, name: str, start: float, seen: set, stop: asyncio.Event) -> None:
         while not stop.is_set():

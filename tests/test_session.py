@@ -25,6 +25,9 @@ class FakeClient:
         self.lines, self.upload_error = list(lines), upload_error
         self.deleted: list[str] = []
         self.exec_calls: list[tuple] = []
+        self.hang = False  # exec_stream emits one line then never ends (an agent stuck in a loop)
+        self.killed: list[str] = []
+        self.stream_closed = False
 
     async def provider_names(self):
         return [session_mod.PROVIDER]
@@ -47,9 +50,18 @@ class FakeClient:
 
     async def exec_stream(self, name, argv, *, timeout=180, env=None):
         self.exec_calls.append((argv, env))
-        for line in self.lines:
-            yield "stdout", line
-        yield "exit", "0"
+        try:
+            for line in self.lines:
+                yield "stdout", line
+            if self.hang:
+                await asyncio.sleep(3600)
+            yield "exit", "0"
+        finally:
+            self.stream_closed = True
+
+    async def kill_agent(self, name):
+        self.killed.append(name)
+        return 1
 
     async def exec_capture(self, name, argv, *, timeout=60):
         return CmdResult(0, "file text", "", 0.0)
@@ -162,5 +174,40 @@ def test_live_events_start_only_after_the_backlog_is_replayed():
         assert ws.sent[-1]["type"] == "state"
         await s.emit("info", message="4")
         assert [e["seq"] for e in ws.of("event")] == [2, 3, 4]
+
+    run(go())
+
+
+def test_stop_kills_a_run_that_never_finishes():
+    """The kill switch must work while the run holds the session lock, and leave the session reusable."""
+    lines = [json.dumps({"type": "llm_request", "step": 1})]
+
+    async def go():
+        c = FakeClient(lines)
+        c.hang = True
+        s = Session(c)
+        ws = FakeWS()
+        await s.on_connect(ws)
+        for round_ in range(2):
+            t = asyncio.create_task(s.handle(ws, Msg("run_task", task="t", url="https://a.example/")))
+            for _ in range(200):
+                await asyncio.sleep(0.01)
+                if s.status == "running" and s._runner:
+                    break
+            await s.handle(ws, Msg("stop"))
+            await asyncio.wait_for(t, timeout=5)
+            assert s.status == "stopped" and not s.lock.locked()
+            assert c.stream_closed and c.killed[-1] == s.sandbox  # host stream torn down AND remote process killed
+            assert s.state_msg()["can_retry"] is True
+        assert [e["kind"] for e in s.log].count("stopped") == 2  # and a stopped session can run again
+
+    run(go())
+
+
+def test_stop_when_idle_is_harmless():
+    async def go():
+        s = Session(FakeClient())
+        await s.handle(FakeWS(), Msg("stop"))
+        assert s.status == "idle" and s.log[-1]["message"] == "nothing is running"
 
     run(go())
